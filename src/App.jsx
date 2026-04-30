@@ -75,11 +75,11 @@ const INITIAL_STORE = {
   // Usuarios: superadmin → coach → alumno
   users: [
     { id:"sa1", role:"superadmin", name:"Admin Master", email:"admin@fi.com",  password:"admin123", gender:null,     coachId:null,  active:true, photo:null, phone:"", birthdate:"" },
-    { id:"c1",  role:"coach",     name:"Martín López", email:"martin@fi.com", password:"1234",     gender:null,     coachId:"sa1", active:true, photo:null, phone:"+54 11 1234-5678", birthdate:"1988-03-15" },
-    { id:"c2",  role:"coach",     name:"Sofía Ruiz",   email:"sofia@fi.com",  password:"1234",     gender:"female", coachId:"sa1", active:true, photo:null, phone:"+54 11 9876-5432", birthdate:"1992-07-22" },
-    { id:"a1",  role:"alumno",    name:"Juan Pérez",   email:"juan@fi.com",   password:"1234",     gender:"male",   coachId:"c1",  active:true, photo:null, phone:"+54 11 5555-1234", birthdate:"1995-11-08", objectives:[{id:"fuerza_max",priority:"principal",completed:false},{id:"hipertrofia",priority:"secundario",completed:false},{id:"core",priority:"secundario",completed:false}] },
-    { id:"a2",  role:"alumno",    name:"Laura García", email:"laura@fi.com",  password:"1234",     gender:"female", coachId:"c1",  active:true, photo:null, phone:"+54 11 4444-9999", birthdate:"1998-02-14", objectives:[{id:"desc_grasa",priority:"principal",completed:false},{id:"hipertrofia",priority:"secundario",completed:false}] },
-    { id:"a3",  role:"alumno",    name:"Diego Torres", email:"diego@fi.com",  password:"1234",     gender:"male",   coachId:"c2",  active:true, photo:null, phone:"", birthdate:"1993-06-30", objectives:[] },
+    { id:"c1", suspended:false,  role:"coach",     name:"Martín López", email:"martin@fi.com", password:"1234",     gender:null,     coachId:"sa1", active:true, photo:null, phone:"+54 11 1234-5678", birthdate:"1988-03-15" },
+    { id:"c2", suspended:false,  role:"coach",     name:"Sofía Ruiz",   email:"sofia@fi.com",  password:"1234",     gender:"female", coachId:"sa1", active:true, photo:null, phone:"+54 11 9876-5432", birthdate:"1992-07-22" },
+    { id:"a1", suspended:false,  role:"alumno",    name:"Juan Pérez",   email:"juan@fi.com",   password:"1234",     gender:"male",   coachId:"c1",  active:true, photo:null, phone:"+54 11 5555-1234", birthdate:"1995-11-08", objectives:[{id:"fuerza_max",priority:"principal",completed:false},{id:"hipertrofia",priority:"secundario",completed:false},{id:"core",priority:"secundario",completed:false}] },
+    { id:"a2", suspended:false,  role:"alumno",    name:"Laura García", email:"laura@fi.com",  password:"1234",     gender:"female", coachId:"c1",  active:true, photo:null, phone:"+54 11 4444-9999", birthdate:"1998-02-14", objectives:[{id:"desc_grasa",priority:"principal",completed:false},{id:"hipertrofia",priority:"secundario",completed:false}] },
+    { id:"a3", suspended:false,  role:"alumno",    name:"Diego Torres", email:"diego@fi.com",  password:"1234",     gender:"male",   coachId:"c2",  active:true, photo:null, phone:"", birthdate:"1993-06-30", objectives:[] },
   ],
   // Rutinas por alumno
   routines: {
@@ -162,6 +162,7 @@ function StoreProvider({ children }) {
         case "ADD_USER": return { ...prev, users: [...prev.users, payload] };
         case "UPDATE_USER": return { ...prev, users: prev.users.map(u => u.id===payload.id ? {...u,...payload} : u) };
         case "DELETE_USER": return { ...prev, users: prev.users.map(u => u.id===payload ? {...u,active:false} : u) };
+        case "SUSPEND_USER": return { ...prev, users: prev.users.map(u => u.id===payload.id ? {...u,suspended:payload.val} : u) };
         case "SET_OBJECTIVES": return { ...prev, users: prev.users.map(u => u.id===payload.alumnoId ? {...u, objectives:payload.objectives} : u) };
         case "COMPLETE_OBJECTIVE": return { ...prev, users: prev.users.map(u => u.id===payload.alumnoId ? {...u, objectives:(u.objectives||[]).map(o => o.id===payload.objId ? {...o, completed:payload.val} : o)} : u) };
         // ── ROUTINES ──
@@ -605,9 +606,20 @@ function UsersModule({ currentUser }) {
                   {u.coachId && <div style={{ fontSize:11, color:"var(--sub)", marginTop:1 }}>Coach: {store.users.find(c=>c.id===u.coachId)?.name}</div>}
                 </div>
                 <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:5 }}>
-                  <Pill label={roleLabel[u.role]} color={roleColor[u.role]} />
+                  <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:3 }}>
+                    <Pill label={roleLabel[u.role]} color={roleColor[u.role]} />
+                    {u.suspended && <Pill label="Suspendido" color="var(--orange)" size={10}/>}
+                  </div>
                   <div style={{ display:"flex", gap:4 }}>
                     <Btn onClick={()=>openEdit(u)} v="ghost" style={{ padding:"3px 10px", fontSize:11 }}>✏️</Btn>
+                    {u.role === "alumno" && (
+                      <Btn
+                        onClick={()=>dispatch("SUSPEND_USER",{id:u.id, val:!u.suspended})}
+                        v={u.suspended ? "success" : "ghost"}
+                        style={{ padding:"3px 10px", fontSize:11 }}
+                        title={u.suspended ? "Reactivar cuenta" : "Suspender cuenta"}
+                      >{u.suspended ? "▶ Reactivar" : "⏸ Suspender"}</Btn>
+                    )}
                     <Btn onClick={()=>dispatch("DELETE_USER", u.id)} v="danger" style={{ padding:"3px 10px", fontSize:11 }}>🗑</Btn>
                   </div>
                 </div>
@@ -1711,25 +1723,31 @@ function AppShell({ currentUser: initUser, onLogout }) {
   const isCoach    = currentUser.role === "coach";
   const isSA       = currentUser.role === "superadmin";
 
+  const isSuspended = currentUser.suspended === true;
   const navItems = isAlumno
-    ? [
-        { id:"inicio",    icon:"⊞",  label:"Inicio" },
-        { id:"training",  icon:"🏋️", label:"Entreno" },
-        { id:"progress",  icon:"📈", label:"Progreso" },
-        { id:"routines",  icon:"📋", label:"Rutinas" },
-        { id:"messages",  icon:"💬", label:"Mensajes" },
-        { id:"config",    icon:"⚙️", label:"Config" },
-      ]
+    ? isSuspended
+      ? [
+          { id:"messages", icon:"💬", label:"Mensajes" },
+          { id:"config",   icon:"⚙️", label:"Config" },
+        ]
+      : [
+          { id:"inicio",    icon:"⊞",  label:"Inicio" },
+          { id:"training",  icon:"🏋️", label:"Entreno" },
+          { id:"progress",  icon:"📈", label:"Progreso" },
+          { id:"routines",  icon:"📋", label:"Rutinas" },
+          { id:"messages",  icon:"💬", label:"Mensajes" },
+          { id:"config",    icon:"⚙️", label:"Config" },
+        ]
     : isCoach
     ? [
-        { id:"overview",  icon:"📊", label:"Overview" },
+        { id:"overview",  icon:"📊", label:"Resumen" },
         { id:"users",     icon:"👥", label:"Alumnos" },
         { id:"routines",  icon:"📋", label:"Rutinas" },
         { id:"messages",  icon:"💬", label:"Mensajes" },
         { id:"config",    icon:"⚙️", label:"Config" },
       ]
     : [ // superadmin
-        { id:"overview",  icon:"📊", label:"Overview" },
+        { id:"overview",  icon:"📊", label:"Resumen" },
         { id:"users",     icon:"👥", label:"Usuarios" },
         { id:"routines",  icon:"📋", label:"Rutinas" },
         { id:"messages",  icon:"💬", label:"Mensajes" },
@@ -1799,6 +1817,15 @@ function AppShell({ currentUser: initUser, onLogout }) {
 
         {/* PAGE CONTENT */}
         <div style={{ flex:1, overflowY:"auto", padding:16 }}>
+          {isSuspended && isAlumno && (
+            <div style={{ background:"#f9731611", border:"1px solid #f9731633", borderRadius:10, padding:"12px 16px", marginBottom:14, display:"flex", alignItems:"center", gap:10 }}>
+              <span style={{ fontSize:20 }}>⚠️</span>
+              <div>
+                <div style={{ fontWeight:700, fontSize:13, color:"#f97316" }}>Cuenta suspendida</div>
+                <div style={{ fontSize:12, color:"var(--sub)", marginTop:2 }}>Solo podés acceder a mensajes. Contactá a tu entrenador para más información.</div>
+              </div>
+            </div>
+          )}
           {page === "inicio"   && <InicioModule   currentUser={currentUser} onNavigate={navigate}/>}
           {page === "training" && <TrainingModule currentUser={currentUser}/>}
           {page === "progress" && <ProgressModule currentUser={currentUser} targetAlumnoId={targetAlumno}/>}
