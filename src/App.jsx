@@ -29,15 +29,57 @@ import { useState, useContext, createContext, useCallback, useRef, useEffect } f
 const AppContext = createContext(null);
 const useStore = () => useContext(AppContext);
 
+
+// ───────────────────────────────────────────────────────────────────────────────
+// CATÁLOGO DE OBJETIVOS (del documento de estructura)
+// ───────────────────────────────────────────────────────────────────────────────
+const OBJECTIVES_CATALOG = [
+  // 🔴 Fuerza
+  { id:"fuerza_max",   label:"Fuerza Máxima",        cat:"Fuerza",       emoji:"🔴", desc:"Desarrollo de la mayor capacidad de fuerza con cargas altas (85–95% 1RM)." },
+  { id:"fuerza_base",  label:"Fuerza Base",           cat:"Fuerza",       emoji:"🔴", desc:"Construcción de una base sólida de fuerza con cargas medias." },
+  { id:"fuerza_expl",  label:"Fuerza Explosiva",      cat:"Fuerza",       emoji:"🔴", desc:"Aplicación rápida de fuerza con velocidad de ejecución." },
+  { id:"potencia",     label:"Potencia",              cat:"Fuerza",       emoji:"🔴", desc:"Producción máxima de fuerza en el menor tiempo posible." },
+  // 🟠 Muscular
+  { id:"hipertrofia",  label:"Hipertrofia",           cat:"Muscular",     emoji:"🟠", desc:"Aumento de masa muscular mediante volumen y tensión mecánica." },
+  { id:"hip_func",     label:"Hipertrofia Funcional", cat:"Muscular",     emoji:"🟠", desc:"Ganancia muscular orientada a rendimiento deportivo." },
+  { id:"res_musc",     label:"Resistencia Muscular",  cat:"Muscular",     emoji:"🟠", desc:"Capacidad de sostener esfuerzos prolongados con fatiga." },
+  // 🟡 Energía
+  { id:"aerobico",     label:"Capacidad Aeróbica",    cat:"Energía",      emoji:"🟡", desc:"Mejora del sistema cardiovascular para esfuerzos prolongados." },
+  { id:"anaerobico",   label:"Potencia Anaeróbica",   cat:"Energía",      emoji:"🟡", desc:"Generar esfuerzos intensos en cortos períodos de tiempo." },
+  { id:"res_anaer",    label:"Resistencia Anaeróbica",cat:"Energía",      emoji:"🟡", desc:"Mantener esfuerzos de alta intensidad durante más tiempo." },
+  { id:"acond_gral",   label:"Acondicionamiento General", cat:"Energía",  emoji:"🟡", desc:"Mejora global del estado físico para soportar cargas más exigentes." },
+  // 🔵 Control
+  { id:"core",         label:"Estabilidad y Core",    cat:"Control",      emoji:"🔵", desc:"Control del tronco para mejorar transferencia de fuerza." },
+  { id:"movilidad",    label:"Movilidad",             cat:"Control",      emoji:"🔵", desc:"Mejora del rango de movimiento articular." },
+  { id:"tecnica",      label:"Técnica de Ejecución",  cat:"Control",      emoji:"🔵", desc:"Perfeccionamiento de patrones de movimiento en ejercicios clave." },
+  { id:"prev_lesion",  label:"Prevención de Lesiones",cat:"Control",      emoji:"🔵", desc:"Reducción del riesgo mediante control de cargas y técnica." },
+  // 🟣 Composición
+  { id:"desc_grasa",   label:"Descenso de Grasa",     cat:"Composición",  emoji:"🟣", desc:"Reducción de tejido adiposo manteniendo masa muscular." },
+  { id:"mant_peso",    label:"Mantenimiento de Peso", cat:"Composición",  emoji:"🟣", desc:"Estabilización del peso mientras se mejora el rendimiento." },
+  { id:"recomp",       label:"Recomposición Corporal",cat:"Composición",  emoji:"🟣", desc:"Disminución de grasa y aumento de músculo simultáneamente." },
+  // ⚫ Rendimiento
+  { id:"prep_comp",    label:"Prep. para Competencia",cat:"Rendimiento",  emoji:"⚫", desc:"Ajuste final del rendimiento con foco en el deporte específico." },
+  { id:"peaking",      label:"Puesta a Punto (Peaking)",cat:"Rendimiento",emoji:"⚫", desc:"Maximización del rendimiento reduciendo la fatiga acumulada." },
+  { id:"transfer",     label:"Transferencia Deportiva",cat:"Rendimiento", emoji:"⚫", desc:"Adaptación de la fuerza y potencia al gesto deportivo." },
+  // ⚪ Recuperación
+  { id:"deload",       label:"Descarga (Deload)",     cat:"Recuperación", emoji:"⚪", desc:"Reducción del volumen/intensidad para facilitar la recuperación." },
+  { id:"rec_activa",   label:"Recuperación Activa",   cat:"Recuperación", emoji:"⚪", desc:"Trabajo de baja intensidad para favorecer la regeneración." },
+];
+
+const OBJ_CAT_COLORS = {
+  "Fuerza":"#ef4444", "Muscular":"#f97316", "Energía":"#eab308",
+  "Control":"#3b82f6", "Composición":"#a855f7", "Rendimiento":"#6b7280", "Recuperación":"#9ca3af"
+};
+
 const INITIAL_STORE = {
   // Usuarios: superadmin → coach → alumno
   users: [
     { id:"sa1", role:"superadmin", name:"Admin Master", email:"admin@fi.com",  password:"admin123", gender:null,     coachId:null,  active:true, photo:null, phone:"", birthdate:"" },
     { id:"c1",  role:"coach",     name:"Martín López", email:"martin@fi.com", password:"1234",     gender:null,     coachId:"sa1", active:true, photo:null, phone:"+54 11 1234-5678", birthdate:"1988-03-15" },
     { id:"c2",  role:"coach",     name:"Sofía Ruiz",   email:"sofia@fi.com",  password:"1234",     gender:"female", coachId:"sa1", active:true, photo:null, phone:"+54 11 9876-5432", birthdate:"1992-07-22" },
-    { id:"a1",  role:"alumno",    name:"Juan Pérez",   email:"juan@fi.com",   password:"1234",     gender:"male",   coachId:"c1",  active:true, photo:null, phone:"+54 11 5555-1234", birthdate:"1995-11-08" },
-    { id:"a2",  role:"alumno",    name:"Laura García", email:"laura@fi.com",  password:"1234",     gender:"female", coachId:"c1",  active:true, photo:null, phone:"+54 11 4444-9999", birthdate:"1998-02-14" },
-    { id:"a3",  role:"alumno",    name:"Diego Torres", email:"diego@fi.com",  password:"1234",     gender:"male",   coachId:"c2",  active:true, photo:null, phone:"", birthdate:"1993-06-30" },
+    { id:"a1",  role:"alumno",    name:"Juan Pérez",   email:"juan@fi.com",   password:"1234",     gender:"male",   coachId:"c1",  active:true, photo:null, phone:"+54 11 5555-1234", birthdate:"1995-11-08", objectives:[{id:"fuerza_max",priority:"principal",completed:false},{id:"hipertrofia",priority:"secundario",completed:false},{id:"core",priority:"secundario",completed:false}] },
+    { id:"a2",  role:"alumno",    name:"Laura García", email:"laura@fi.com",  password:"1234",     gender:"female", coachId:"c1",  active:true, photo:null, phone:"+54 11 4444-9999", birthdate:"1998-02-14", objectives:[{id:"desc_grasa",priority:"principal",completed:false},{id:"hipertrofia",priority:"secundario",completed:false}] },
+    { id:"a3",  role:"alumno",    name:"Diego Torres", email:"diego@fi.com",  password:"1234",     gender:"male",   coachId:"c2",  active:true, photo:null, phone:"", birthdate:"1993-06-30", objectives:[] },
   ],
   // Rutinas por alumno
   routines: {
@@ -120,6 +162,8 @@ function StoreProvider({ children }) {
         case "ADD_USER": return { ...prev, users: [...prev.users, payload] };
         case "UPDATE_USER": return { ...prev, users: prev.users.map(u => u.id===payload.id ? {...u,...payload} : u) };
         case "DELETE_USER": return { ...prev, users: prev.users.map(u => u.id===payload ? {...u,active:false} : u) };
+        case "SET_OBJECTIVES": return { ...prev, users: prev.users.map(u => u.id===payload.alumnoId ? {...u, objectives:payload.objectives} : u) };
+        case "COMPLETE_OBJECTIVE": return { ...prev, users: prev.users.map(u => u.id===payload.alumnoId ? {...u, objectives:(u.objectives||[]).map(o => o.id===payload.objId ? {...o, completed:payload.val} : o)} : u) };
         // ── ROUTINES ──
         case "ADD_ROUTINE": {
           const aId = payload.alumnoId;
@@ -135,7 +179,12 @@ function StoreProvider({ children }) {
         }
         case "SAVE_LOG": {
           const { alumnoId, rutinaId, logs } = payload;
-          return { ...prev, routines: { ...prev.routines, [alumnoId]: prev.routines[alumnoId].map(r => r.id===rutinaId ? {...r, logs, status:"done"} : r) } };
+          const updatedRoutines = prev.routines[alumnoId].map(r => r.id===rutinaId ? {...r, logs, status:"done"} : r);
+          const allDone = updatedRoutines.every(r => r.status === "done");
+          const updatedUsers = allDone
+            ? prev.users.map(u => u.id===alumnoId ? {...u, objectives:(u.objectives||[]).map(o => ({...o, completed:true}))} : u)
+            : prev.users;
+          return { ...prev, routines: { ...prev.routines, [alumnoId]: updatedRoutines }, users: updatedUsers };
         }
         // ── MESSAGES ──
         case "ADD_MESSAGE": {
@@ -387,6 +436,108 @@ function AuthModule({ onLogin }) {
 // ───────────────────────────────────────────────────────────────────────────────
 // [M3] USERS MODULE
 // ───────────────────────────────────────────────────────────────────────────────
+
+// ───────────────────────────────────────────────────────────────────────────────
+// [M10] OBJECTIVES SELECTOR — usado en UsersModule al crear/editar alumno
+// ───────────────────────────────────────────────────────────────────────────────
+function ObjectivesSelector({ value, onChange }) {
+  const MAX = 3;
+  const byCategory = OBJECTIVES_CATALOG.reduce((acc, o) => {
+    if (!acc[o.cat]) acc[o.cat] = [];
+    acc[o.cat].push(o);
+    return acc;
+  }, {});
+
+  const isSelected = (id) => value.some(v => v.id === id);
+  const getObj = (id) => value.find(v => v.id === id);
+  const principal = value.find(v => v.priority === "principal");
+
+  const toggle = (obj) => {
+    if (isSelected(obj.id)) {
+      onChange(value.filter(v => v.id !== obj.id));
+    } else {
+      if (value.length >= MAX) return; // max 3
+      const newObj = { id:obj.id, priority: !principal ? "principal" : "secundario", completed:false };
+      onChange([...value, newObj]);
+    }
+  };
+
+  const setPriority = (id, priority) => {
+    // only one principal allowed
+    onChange(value.map(v => {
+      if (v.id === id) return { ...v, priority };
+      if (priority === "principal" && v.priority === "principal") return { ...v, priority:"secundario" };
+      return v;
+    }));
+  };
+
+  return (
+    <div>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+        <Label>OBJETIVOS DEL CICLO</Label>
+        <span style={{ fontSize:11, color: value.length >= MAX ? "var(--red)" : "var(--sub)" }}>
+          {value.length}/{MAX} seleccionados
+        </span>
+      </div>
+      <div style={{ fontSize:11, color:"var(--sub)", marginBottom:10 }}>
+        Máx. 3 objetivos · 1 principal + hasta 2 secundarios
+      </div>
+
+      {/* Selected objectives summary */}
+      {value.length > 0 && (
+        <div style={{ marginBottom:12, display:"flex", flexDirection:"column", gap:5 }}>
+          {value.map(v => {
+            const obj = OBJECTIVES_CATALOG.find(o=>o.id===v.id);
+            return (
+              <div key={v.id} style={{ display:"flex", alignItems:"center", gap:8, background:"var(--surface)", borderRadius:8, padding:"7px 10px", border:`1px solid ${v.priority==="principal"?"var(--accent)":"var(--border)"}` }}>
+                <span>{obj?.emoji}</span>
+                <span style={{ flex:1, fontSize:13, fontWeight:600 }}>{obj?.label}</span>
+                <select value={v.priority} onChange={e=>setPriority(v.id, e.target.value)} style={{ width:"auto", fontSize:11, padding:"2px 6px" }}>
+                  <option value="principal">Principal</option>
+                  <option value="secundario">Secundario</option>
+                </select>
+                <button onClick={()=>toggle(obj)} style={{ background:"none", border:"none", color:"var(--red)", fontSize:16, padding:"0 2px" }}>×</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Catalog by category */}
+      <div style={{ maxHeight:240, overflowY:"auto", border:"1px solid var(--border)", borderRadius:9 }}>
+        {Object.entries(byCategory).map(([cat, objs]) => (
+          <div key={cat}>
+            <div style={{ fontSize:10, fontWeight:700, letterSpacing:1, color:"var(--sub)", padding:"7px 12px 4px", background:"var(--surface)", position:"sticky", top:0 }}>
+              {objs[0].emoji} {cat.toUpperCase()}
+            </div>
+            {objs.map(obj => {
+              const sel = isSelected(obj.id);
+              const disabled = !sel && value.length >= MAX;
+              return (
+                <button key={obj.id} onClick={()=>!disabled&&toggle(obj)} style={{
+                  display:"flex", alignItems:"flex-start", gap:8, width:"100%",
+                  background: sel ? "var(--dim)" : "transparent",
+                  border:"none", borderBottom:"1px solid var(--border)",
+                  padding:"8px 12px", textAlign:"left", opacity: disabled ? .4 : 1,
+                  cursor: disabled ? "not-allowed" : "pointer",
+                }}>
+                  <div style={{ width:18, height:18, borderRadius:4, border:`2px solid ${sel?"var(--accent)":"var(--border)"}`, background:sel?"var(--accent)":"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1 }}>
+                    {sel && <span style={{ color:"#fff", fontSize:11, fontWeight:700 }}>✓</span>}
+                  </div>
+                  <div>
+                    <div style={{ fontSize:13, fontWeight:sel?700:400, color:sel?"var(--accent)":"var(--text)" }}>{obj.label}</div>
+                    <div style={{ fontSize:11, color:"var(--sub)", marginTop:1 }}>{obj.desc}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function UsersModule({ currentUser }) {
   const { store, dispatch } = useStore();
   const theme = getTheme(currentUser);
@@ -406,7 +557,7 @@ function UsersModule({ currentUser }) {
   const coaches = store.users.filter(u => u.role==="coach" && u.active);
 
   const openAdd = () => {
-    setForm({ name:"", email:"", password:"1234", role: currentUser.role==="coach"?"alumno":"coach", gender:"male", coachId: currentUser.role==="coach"?currentUser.id:"" });
+    setForm({ name:"", email:"", password:"1234", role: currentUser.role==="coach"?"alumno":"coach", gender:"male", coachId: currentUser.role==="coach"?currentUser.id:currentUser.role==="superadmin"?"":"" });
     setModal("add");
   };
   const openEdit = (u) => { setEditing(u); setForm({...u}); setModal("edit"); };
@@ -421,7 +572,7 @@ function UsersModule({ currentUser }) {
     setModal(null);
   };
 
-  const roleLabel = { superadmin:"SuperAdmin", coach:"Entrenador", alumno:"Alumno/a" };
+  const roleLabel = { superadmin:"SuperAdmin", coach:"Entrenador", alumno:"Alumno" };
   const roleColor = { superadmin:"var(--yellow)", coach:"var(--red)", alumno:"var(--accent)" };
 
   return (
@@ -493,12 +644,25 @@ function UsersModule({ currentUser }) {
                 </div>
                 <div>
                   <Label>ENTRENADOR ASIGNADO</Label>
-                  <select value={form.coachId} onChange={e=>setForm(p=>({...p,coachId:e.target.value}))}>
-                    <option value="">— Seleccionar —</option>
-                    {coaches.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
+                  {currentUser.role === "superadmin" ? (
+                    <select value={form.coachId} onChange={e=>setForm(p=>({...p,coachId:e.target.value}))}>
+                      <option value="">— Seleccionar —</option>
+                      {coaches.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  ) : (
+                    <div style={{ background:"var(--surface)", borderRadius:8, padding:"8px 12px", fontSize:13, color:"var(--sub)", border:"1px solid var(--border)" }}>
+                      {store.users.find(u=>u.id===currentUser.id)?.name} <span style={{ color:"var(--muted)", fontSize:11 }}>(asignado automáticamente)</span>
+                    </div>
+                  )}
                 </div>
               </>
+            )}
+            {/* Objectives selector — only for alumnos */}
+            {form.role === "alumno" && (
+              <ObjectivesSelector
+                value={form.objectives||[]}
+                onChange={v=>setForm(p=>({...p,objectives:v}))}
+              />
             )}
             <Divider/>
             <div style={{ display:"flex", gap:8 }}>
@@ -516,106 +680,158 @@ function UsersModule({ currentUser }) {
 // [M8] IMPORT MODULE — CSV / XLSX upload
 // ───────────────────────────────────────────────────────────────────────────────
 function ImportModule({ alumnoId, onImport, onClose }) {
-  const [file, setFile]   = useState(null);
-  const [preview, setPreview] = useState(null);
-  const [error, setError] = useState("");
-  const [step, setStep]   = useState("choose"); // choose | preview | done
+  const [file, setFile]     = useState(null);
+  const [sheets, setSheets] = useState([]); // [{ name, exercises[] }]
+  const [error, setError]   = useState("");
+  const [step, setStep]     = useState("choose"); // choose | preview | done
+  const [importing, setImporting] = useState(false);
+  const [previewSheet, setPreviewSheet] = useState(0);
   const fileRef = useRef();
 
-  const CSV_TEMPLATE = `nombre_ejercicio,series,reps,porcentaje_1rm,peso_objetivo,descanso,instruccion
-Sentadilla trasera,5,5,85%,102.5 kg,2-3 min,Baja controlada sube explosivo
-Peso muerto rumano,4,6,75%,90 kg,2 min,Siente el estiramiento
-Prensa 45,3,8,70%,180 kg,90 seg,Recorrido completo`;
-
-  const downloadTemplate = () => {
-    const blob = new Blob([CSV_TEMPLATE], { type:"text/csv" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "plantilla_rutina_fi.csv";
-    a.click();
+  // ── Plantilla XLSX multi-hoja ─────────────────────────────────────────────
+  const downloadTemplate = async () => {
+    // Dynamically load SheetJS
+    if (!window.XLSX) {
+      await new Promise((res, rej) => {
+        const s = document.createElement("script");
+        s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+    }
+    const XLSX = window.XLSX;
+    const wb = XLSX.utils.book_new();
+    // Create 3 example sheets (Dia_1, Dia_2, Dia_3)
+    for (let d = 1; d <= 3; d++) {
+      const data = [
+        ["nombre_ejercicio","series","reps","porcentaje_1rm","peso_objetivo","descanso","instruccion"],
+        ["Sentadilla trasera", 5, 5, "85%", "102.5 kg", "2-3 min", "Baja controlada"],
+        ["Peso muerto rumano", 4, 6, "75%", "90 kg", "2 min", "Siente el estiramiento"],
+        ["Press de banca", 3, 8, "70%", "80 kg", "90 seg", "Recorrido completo"],
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(data);
+      XLSX.utils.book_append_sheet(wb, ws, `Dia_${d}`);
+    }
+    XLSX.writeFile(wb, "plantilla_rutina_trimestral.xlsx");
   };
 
-  const parseCSV = (text) => {
-    const lines = text.trim().split("\n").filter(Boolean);
-    if (lines.length < 2) throw new Error("El archivo está vacío o mal formateado");
-    const headers = lines[0].split(",").map(h=>h.trim().toLowerCase());
-    const required = ["nombre_ejercicio","series","reps"];
-    required.forEach(r => { if (!headers.includes(r)) throw new Error(`Falta columna: ${r}`); });
-    return lines.slice(1).map((line, i) => {
-      const vals = line.split(",").map(v=>v.trim());
+  // ── Parse rows from a sheet's JSON ───────────────────────────────────────
+  const parseRows = (rows, sheetName) => {
+    if (!rows || rows.length < 2) return [];
+    const headers = rows[0].map(h => String(h||"").trim().toLowerCase());
+    return rows.slice(1).filter(r => r.some(Boolean)).map((r, i) => {
       const row = {};
-      headers.forEach((h,j) => { row[h] = vals[j]||""; });
+      headers.forEach((h, j) => { row[h] = String(r[j]||"").trim(); });
       return {
-        id: "imp_"+Date.now()+"_"+i,
-        name:         row["nombre_ejercicio"] || `Ejercicio ${i+1}`,
-        sets:         parseInt(row["series"])||3,
-        reps:         row["reps"]||"8",
-        pct:          row["porcentaje_1rm"]||"—",
-        peso:         row["peso_objetivo"]||"—",
-        descanso:     row["descanso"]||"90 seg",
-        instruccion:  row["instruccion"]||"",
+        id: `imp_${sheetName}_${i}_${Date.now()}`,
+        name:        row["nombre_ejercicio"] || `Ejercicio ${i+1}`,
+        sets:        parseInt(row["series"]) || 3,
+        reps:        row["reps"] || "8",
+        pct:         row["porcentaje_1rm"] || "—",
+        peso:        row["peso_objetivo"] || "—",
+        descanso:    row["descanso"] || "90 seg",
+        instruccion: row["instruccion"] || "",
       };
     });
   };
 
+  // ── Handle file upload ────────────────────────────────────────────────────
   const handleFile = async (f) => {
-    setFile(f); setError("");
+    setFile(f); setError(""); setSheets([]);
+    setImporting(true);
     try {
-      if (f.name.endsWith(".csv") || f.type.includes("text")) {
-        const text = await f.text();
-        setPreview(parseCSV(text));
-        setStep("preview");
-      } else if (f.name.endsWith(".xlsx") || f.name.endsWith(".xls")) {
-        // XLSX: leer como texto tabulado (simplificado para demo)
-        const text = await f.text();
-        // Intentar parse como CSV con tabs
-        const csvLike = text.replace(/\t/g, ",");
-        try { setPreview(parseCSV(csvLike)); setStep("preview"); }
-        catch { setError("Para XLSX, guardá el archivo como CSV desde Google Sheets y volvé a subirlo."); }
-      } else {
-        setError("Formato no soportado. Usá .csv o .xlsx");
+      // Load SheetJS dynamically
+      if (!window.XLSX) {
+        await new Promise((res, rej) => {
+          const s = document.createElement("script");
+          s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+          s.onload = res; s.onerror = rej;
+          document.head.appendChild(s);
+        });
       }
+      const XLSX = window.XLSX;
+      const buf  = await f.arrayBuffer();
+      const wb   = XLSX.read(buf, { type:"array" });
+
+      if (f.name.endsWith(".csv")) {
+        // Single CSV → one sheet
+        const text = await f.text();
+        const ws   = XLSX.read(text, { type:"string" }).Sheets["Sheet1"] ||
+                     Object.values(XLSX.read(text, { type:"string" }).Sheets)[0];
+        const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:"" });
+        const exercises = parseRows(rows, "Dia_1");
+        if (!exercises.length) throw new Error("No se detectaron ejercicios en el archivo");
+        setSheets([{ name:"Dia_1", exercises }]);
+      } else {
+        // XLSX — puede tener múltiples hojas (ej: 36 días)
+        const parsed = wb.SheetNames.map(name => {
+          const ws   = wb.Sheets[name];
+          const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:"" });
+          return { name, exercises: parseRows(rows, name) };
+        }).filter(s => s.exercises.length > 0);
+
+        if (!parsed.length) throw new Error("No se encontraron hojas con datos válidos");
+        setSheets(parsed);
+      }
+      setPreviewSheet(0);
+      setStep("preview");
     } catch(e) {
-      setError(e.message);
+      setError("Error al leer el archivo: " + e.message);
+    } finally {
+      setImporting(false);
     }
   };
 
+  // ── Import all sheets as individual routines ──────────────────────────────
   const confirmImport = () => {
-    if (!preview) return;
-    onImport({
-      id: "r"+Date.now(),
-      alumnoId,
-      semana: 1,
-      label: file.name.replace(/\.(csv|xlsx|xls)$/,"").replace(/_/g," "),
-      status: "upcoming",
-      duracion: "60–75 min",
-      exercises: preview,
-      logs: Object.fromEntries(preview.map(e=>[e.id,[]]))
+    const ts = Date.now();
+    sheets.forEach((sheet, i) => {
+      const semana = Math.floor(i / 3) + 1;
+      onImport({
+        id:        `r${ts}_${i}`,
+        alumnoId,
+        semana,
+        label:     sheet.name.replace(/_/g, " "),
+        status:    "upcoming",
+        duracion:  "60–75 min",
+        exercises: sheet.exercises,
+        logs:      Object.fromEntries(sheet.exercises.map(e => [e.id, []])),
+      });
     });
     setStep("done");
-    setTimeout(onClose, 1500);
+    setTimeout(onClose, 2000);
   };
+
+  const cur = sheets[previewSheet];
 
   return (
     <div>
       {step === "choose" && (
         <>
           <div style={{ background:"var(--surface)", borderRadius:10, padding:14, marginBottom:14 }}>
-            <div style={{ fontSize:13, fontWeight:600, marginBottom:6 }}>📥 Paso 1 — Descargá la plantilla</div>
-            <div style={{ fontSize:12, color:"var(--sub)", marginBottom:10 }}>Completá la plantilla en Google Sheets o Excel y guardala como CSV.</div>
-            <Btn onClick={downloadTemplate} v="ghost" full>⬇ Descargar plantilla CSV</Btn>
+            <div style={{ fontSize:13, fontWeight:600, marginBottom:4 }}>📥 Paso 1 — Descargá la plantilla</div>
+            <div style={{ fontSize:12, color:"var(--sub)", marginBottom:10 }}>
+              Cada hoja del archivo = un día de entrenamiento.<br/>
+              Podés tener hasta 36 hojas (Dia_1 a Dia_36).
+            </div>
+            <Btn onClick={downloadTemplate} v="ghost" full>⬇ Descargar plantilla XLSX</Btn>
           </div>
           <div style={{ background:"var(--surface)", borderRadius:10, padding:14, marginBottom:14 }}>
-            <div style={{ fontSize:13, fontWeight:600, marginBottom:6 }}>📤 Paso 2 — Subí el archivo completado</div>
+            <div style={{ fontSize:13, fontWeight:600, marginBottom:6 }}>📤 Paso 2 — Subí tu archivo completado</div>
             <div
               onClick={()=>fileRef.current.click()}
-              onDragOver={e=>{e.preventDefault();}}
+              onDragOver={e=>e.preventDefault()}
               onDrop={e=>{e.preventDefault(); handleFile(e.dataTransfer.files[0]);}}
-              style={{ border:"2px dashed var(--border)", borderRadius:10, padding:"28px 20px", textAlign:"center", cursor:"pointer", transition:"border .2s" }}
+              style={{ border:"2px dashed var(--border)", borderRadius:10, padding:"28px 20px", textAlign:"center", cursor:"pointer" }}
             >
-              <div style={{ fontSize:28, marginBottom:8 }}>📁</div>
-              <div style={{ fontSize:13, fontWeight:600, marginBottom:4 }}>{file ? file.name : "Arrastrá o hacé click para subir"}</div>
-              <div style={{ fontSize:12, color:"var(--sub)" }}>CSV o XLSX</div>
+              {importing
+                ? <div style={{ color:"var(--sub)", fontSize:13 }}>⏳ Leyendo archivo...</div>
+                : <>
+                    <div style={{ fontSize:28, marginBottom:8 }}>📁</div>
+                    <div style={{ fontSize:13, fontWeight:600, marginBottom:4 }}>{file ? file.name : "Arrastrá o hacé click para subir"}</div>
+                    <div style={{ fontSize:12, color:"var(--sub)" }}>CSV o XLSX (multi-hoja)</div>
+                  </>
+              }
             </div>
             <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display:"none" }} onChange={e=>e.target.files[0]&&handleFile(e.target.files[0])}/>
           </div>
@@ -623,37 +839,59 @@ Prensa 45,3,8,70%,180 kg,90 seg,Recorrido completo`;
         </>
       )}
 
-      {step === "preview" && preview && (
+      {step === "preview" && sheets.length > 0 && (
         <>
-          <div style={{ background:"#22c55e11", border:"1px solid #22c55e33", borderRadius:9, padding:"10px 14px", color:"#22c55e", fontSize:13, marginBottom:14 }}>
-            ✓ {preview.length} ejercicios detectados en "{file.name}"
+          <div style={{ background:"#22c55e11", border:"1px solid #22c55e33", borderRadius:9, padding:"10px 14px", color:"#22c55e", fontSize:13, marginBottom:12 }}>
+            ✓ {sheets.length} días detectados · {sheets.reduce((s,sh)=>s+sh.exercises.length,0)} ejercicios en total
           </div>
-          <div style={{ overflowX:"auto", marginBottom:14 }}>
-            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12, minWidth:400 }}>
-              <thead>
-                <tr style={{ background:"var(--surface)" }}>
-                  {["Ejercicio","Series","Reps","%1RM","Peso","Descanso"].map(h => (
-                    <th key={h} style={{ padding:"6px 10px", textAlign:"left", fontSize:10, color:"var(--sub)", fontWeight:700, letterSpacing:.5 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {preview.map((e,i) => (
-                  <tr key={i} style={{ borderTop:"1px solid var(--border)" }}>
-                    <td style={{ padding:"7px 10px", fontWeight:600 }}>{e.name}</td>
-                    <td style={{ padding:"7px 10px" }}>{e.sets}</td>
-                    <td style={{ padding:"7px 10px" }}>{e.reps}</td>
-                    <td style={{ padding:"7px 10px", color:"var(--accent)" }}>{e.pct}</td>
-                    <td style={{ padding:"7px 10px" }}>{e.peso}</td>
-                    <td style={{ padding:"7px 10px" }}>{e.descanso}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+
+          {/* Sheet selector */}
+          <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:12 }}>
+            {sheets.map((sh, i) => (
+              <button key={i} onClick={()=>setPreviewSheet(i)} style={{
+                background: previewSheet===i ? "var(--accent)" : "var(--surface)",
+                border: `1px solid ${previewSheet===i ? "var(--accent)" : "var(--border)"}`,
+                color: previewSheet===i ? "#fff" : "var(--sub)",
+                borderRadius:7, padding:"4px 10px", fontSize:11, fontWeight:600,
+              }}>{sh.name.replace(/_/g," ")}</button>
+            ))}
           </div>
+
+          {/* Preview of selected sheet */}
+          {cur && (
+            <div style={{ background:"var(--surface)", borderRadius:10, padding:12, marginBottom:12 }}>
+              <div style={{ fontSize:12, fontWeight:700, marginBottom:8, color:"var(--accent)" }}>
+                {cur.name.replace(/_/g," ")} — {cur.exercises.length} ejercicios
+              </div>
+              <div style={{ overflowX:"auto" }}>
+                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, minWidth:380 }}>
+                  <thead>
+                    <tr style={{ background:"var(--card)" }}>
+                      {["Ejercicio","Series","Reps","%1RM","Peso","Descanso"].map(h => (
+                        <th key={h} style={{ padding:"5px 8px", textAlign:"left", color:"var(--sub)", fontWeight:700 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cur.exercises.map((e,i) => (
+                      <tr key={i} style={{ borderTop:"1px solid var(--border)" }}>
+                        <td style={{ padding:"6px 8px", fontWeight:600 }}>{e.name}</td>
+                        <td style={{ padding:"6px 8px" }}>{e.sets}</td>
+                        <td style={{ padding:"6px 8px" }}>{e.reps}</td>
+                        <td style={{ padding:"6px 8px", color:"var(--accent)" }}>{e.pct}</td>
+                        <td style={{ padding:"6px 8px" }}>{e.peso}</td>
+                        <td style={{ padding:"6px 8px" }}>{e.descanso}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           <div style={{ display:"flex", gap:8 }}>
-            <Btn v="ghost" onClick={()=>{setStep("choose");setPreview(null);setFile(null);}} full>← Volver</Btn>
-            <Btn onClick={confirmImport} full>Importar rutina ✓</Btn>
+            <Btn v="ghost" onClick={()=>{setStep("choose");setSheets([]);setFile(null);}} full>← Volver</Btn>
+            <Btn onClick={confirmImport} full>Importar {sheets.length} días ✓</Btn>
           </div>
         </>
       )}
@@ -661,7 +899,7 @@ Prensa 45,3,8,70%,180 kg,90 seg,Recorrido completo`;
       {step === "done" && (
         <div style={{ textAlign:"center", padding:32 }}>
           <div style={{ fontSize:40, marginBottom:12 }}>✅</div>
-          <H size={18}>¡Rutina importada!</H>
+          <H size={18}>¡{sheets.length} rutinas importadas!</H>
           <div style={{ fontSize:13, color:"var(--sub)", marginTop:6 }}>Cerrando...</div>
         </div>
       )}
@@ -763,7 +1001,7 @@ function RoutinesModule({ currentUser, targetAlumnoId }) {
                 <input placeholder="Nombre del ejercicio" value={ex.name} onChange={e=>updEx(i,"name",e.target.value)} style={{ marginBottom:6 }}/>
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:5, marginBottom:5 }}>
                   <input type="number" placeholder="Series" value={ex.sets} onChange={e=>updEx(i,"sets",+e.target.value)}/>
-                  <input placeholder="Reps" value={ex.reps} onChange={e=>updEx(i,"reps",e.target.value)}/>
+                  <input placeholder="Repeticiones" value={ex.reps} onChange={e=>updEx(i,"reps",e.target.value)}/>
                   <input placeholder="Peso" value={ex.peso} onChange={e=>updEx(i,"peso",e.target.value)}/>
                   <input placeholder="Descanso" value={ex.descanso} onChange={e=>updEx(i,"descanso",e.target.value)}/>
                 </div>
@@ -894,7 +1132,7 @@ function TrainingModule({ currentUser }) {
                   <div key={si} style={{ display:"grid", gridTemplateColumns:"22px 80px 80px 1fr", gap:6, alignItems:"center", marginBottom:5 }}>
                     <span style={{ fontSize:11, color:"var(--sub)", fontWeight:700, textAlign:"center" }}>{si+1}</span>
                     <input type="number" placeholder="kg" value={l.kg||""} onChange={e=>upd(ex.id,si,"kg",e.target.value)} style={{ padding:"6px 8px", fontSize:12 }}/>
-                    <input type="number" placeholder="reps" value={l.reps||""} onChange={e=>upd(ex.id,si,"reps",e.target.value)} style={{ padding:"6px 8px", fontSize:12 }}/>
+                    <input type="number" placeholder="repeticiones" value={l.reps||""} onChange={e=>upd(ex.id,si,"reps",e.target.value)} style={{ padding:"6px 8px", fontSize:12 }}/>
                     <RPESel value={l.rpe} onChange={v=>upd(ex.id,si,"rpe",v)} compact/>
                   </div>
                 );
@@ -1181,13 +1419,22 @@ function OverviewModule({ currentUser, onNavigate }) {
 // INICIO MODULE — dashboard personal del alumno
 // ───────────────────────────────────────────────────────────────────────────────
 function InicioModule({ currentUser, onNavigate }) {
-  const { store } = useStore();
-  const myRoutines = store.routines[currentUser.id] || [];
-  const progData   = store.progress[currentUser.id] || {};
-  const coachUser  = store.users.find(u=>u.id===currentUser.coachId);
-  const todayR     = myRoutines.find(r=>r.status==="today");
-  const doneCount  = myRoutines.filter(r=>r.status==="done").length;
-  const theme = getTheme(currentUser);
+  const { store, dispatch } = useStore();
+  const myRoutines  = store.routines[currentUser.id] || [];
+  const progData    = store.progress[currentUser.id] || {};
+  const todayR      = myRoutines.find(r=>r.status==="today");
+  const doneCount   = myRoutines.filter(r=>r.status==="done").length;
+  const allDone     = myRoutines.length > 0 && myRoutines.every(r=>r.status==="done");
+  const theme       = getTheme(currentUser);
+  const meUser      = store.users.find(u=>u.id===currentUser.id);
+  const myObjectives = (meUser?.objectives||[]).map(o => ({
+    ...o,
+    ...OBJECTIVES_CATALOG.find(c=>c.id===o.id),
+  }));
+
+  const toggleComplete = (objId, val) => {
+    dispatch("COMPLETE_OBJECTIVE", { alumnoId:currentUser.id, objId, val });
+  };
 
   return (
     <div className="fade">
@@ -1225,6 +1472,47 @@ function InicioModule({ currentUser, onNavigate }) {
           <div style={{ fontSize:28, marginBottom:8 }}>🌟</div>
           <div style={{ fontWeight:600 }}>¡Día de descanso!</div>
           <div style={{ fontSize:13, color:"var(--sub)", marginTop:4 }}>Aprovechá para recuperarte.</div>
+        </Card>
+      )}
+
+      {/* Objectives cards */}
+      {myObjectives.length > 0 && (
+        <Card style={{ marginBottom:12 }}>
+          <div style={{ fontSize:11, color:"var(--sub)", fontWeight:600, letterSpacing:1, marginBottom:10 }}>
+            OBJETIVOS DEL CICLO
+            {allDone && <span style={{ marginLeft:8, color:"var(--green)", fontSize:10 }}>● Todas las rutinas completadas</span>}
+          </div>
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            {myObjectives.map((o,i) => {
+              const catColor = OBJ_CAT_COLORS[o.cat] || "#6b7280";
+              return (
+                <div key={i} style={{
+                  display:"flex", alignItems:"flex-start", gap:10,
+                  background:"var(--surface)", borderRadius:9, padding:"10px 12px",
+                  borderLeft:`3px solid ${o.completed ? "var(--green)" : o.priority==="principal" ? "var(--accent)" : "var(--border)"}`,
+                  opacity: o.completed ? .75 : 1,
+                }}>
+                  <span style={{ fontSize:18, flexShrink:0 }}>{o.emoji}</span>
+                  <div style={{ flex:1 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
+                      <span style={{ fontSize:13, fontWeight:700, textDecoration:o.completed?"line-through":"none" }}>{o.label}</span>
+                      <Pill label={o.priority} color={o.priority==="principal"?"var(--accent)":"var(--sub)"} size={10}/>
+                      <Pill label={o.cat} color={catColor} size={10}/>
+                    </div>
+                    <div style={{ fontSize:12, color:"var(--sub)", marginTop:3 }}>{o.desc}</div>
+                  </div>
+                  <button onClick={()=>toggleComplete(o.id, !o.completed)} style={{
+                    flexShrink:0, width:26, height:26, borderRadius:"50%",
+                    border:`2px solid ${o.completed?"var(--green)":"var(--border)"}`,
+                    background: o.completed?"var(--green)":"transparent",
+                    color:"#fff", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center",
+                  }} title={o.completed?"Marcar pendiente":"Marcar cumplido"}>
+                    {o.completed ? "✓" : ""}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         </Card>
       )}
 
