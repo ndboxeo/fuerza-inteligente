@@ -1847,7 +1847,7 @@ function ConfigModule({ currentUser, onLogout, onUserUpdate }) {
 // SHELL — Layout principal con sidebar + nav
 // ───────────────────────────────────────────────────────────────────────────────
 function AppShell({ currentUser: initUser, onLogout }) {
-  const { dispatch } = useStore();
+  const { store, dispatch } = useStore();
   const [currentUser, setCurrentUserLocal] = useState(initUser);
   const theme = getTheme(currentUser);
   const isSuspendedInit = initUser.suspended === true;
