@@ -75,11 +75,11 @@ const INITIAL_STORE = {
   // Usuarios: superadmin → coach → alumno
   users: [
     { id:"sa1", role:"superadmin", name:"Admin Master", email:"admin@fi.com",  password:"admin123", gender:null,     coachId:null,  active:true, photo:null, phone:"", birthdate:"" },
-    { id:"c1", suspended:false,  role:"coach",     name:"Martín López", email:"martin@fi.com", password:"1234",     gender:null,     coachId:"sa1", active:true, photo:null, phone:"+54 11 1234-5678", birthdate:"1988-03-15" },
-    { id:"c2", suspended:false,  role:"coach",     name:"Sofía Ruiz",   email:"sofia@fi.com",  password:"1234",     gender:"female", coachId:"sa1", active:true, photo:null, phone:"+54 11 9876-5432", birthdate:"1992-07-22" },
-    { id:"a1", suspended:false,  role:"alumno",    name:"Juan Pérez",   email:"juan@fi.com",   password:"1234",     gender:"male",   coachId:"c1",  active:true, photo:null, phone:"+54 11 5555-1234", birthdate:"1995-11-08", objectives:[{id:"fuerza_max",priority:"principal",completed:false},{id:"hipertrofia",priority:"secundario",completed:false},{id:"core",priority:"secundario",completed:false}] },
-    { id:"a2", suspended:false,  role:"alumno",    name:"Laura García", email:"laura@fi.com",  password:"1234",     gender:"female", coachId:"c1",  active:true, photo:null, phone:"+54 11 4444-9999", birthdate:"1998-02-14", objectives:[{id:"desc_grasa",priority:"principal",completed:false},{id:"hipertrofia",priority:"secundario",completed:false}] },
-    { id:"a3", suspended:false,  role:"alumno",    name:"Diego Torres", email:"diego@fi.com",  password:"1234",     gender:"male",   coachId:"c2",  active:true, photo:null, phone:"", birthdate:"1993-06-30", objectives:[] },
+    { id:"c1", suspended:false, suspendedAt:null, role:"coach", name:"Martín López", email:"martin@fi.com", password:"1234", gender:null, coachId:"sa1", active:true, photo:null, phone:"+54 11 1234-5678", birthdate:"1988-03-15", alumnoLimit:null, expiresAt:null },
+    { id:"c2", suspended:false, suspendedAt:null, role:"coach", name:"Sofía Ruiz", email:"sofia@fi.com", password:"1234", gender:"female", coachId:"sa1", active:true, photo:null, phone:"+54 11 9876-5432", birthdate:"1992-07-22", alumnoLimit:20, expiresAt:null },
+    { id:"a1", suspended:false, suspendedAt:null,  role:"alumno",    name:"Juan Pérez",   email:"juan@fi.com",   password:"1234",     gender:"male",   coachId:"c1",  active:true, photo:null, phone:"+54 11 5555-1234", birthdate:"1995-11-08", objectives:[{id:"fuerza_max",priority:"principal",completed:false},{id:"hipertrofia",priority:"secundario",completed:false},{id:"core",priority:"secundario",completed:false}] },
+    { id:"a2", suspended:false, suspendedAt:null,  role:"alumno",    name:"Laura García", email:"laura@fi.com",  password:"1234",     gender:"female", coachId:"c1",  active:true, photo:null, phone:"+54 11 4444-9999", birthdate:"1998-02-14", objectives:[{id:"desc_grasa",priority:"principal",completed:false},{id:"hipertrofia",priority:"secundario",completed:false}] },
+    { id:"a3", suspended:false, suspendedAt:null,  role:"alumno",    name:"Diego Torres", email:"diego@fi.com",  password:"1234",     gender:"male",   coachId:"c2",  active:true, photo:null, phone:"", birthdate:"1993-06-30", objectives:[] },
   ],
   // Rutinas por alumno
   routines: {
@@ -155,6 +155,30 @@ const INITIAL_STORE = {
 function StoreProvider({ children }) {
   const [store, setStore] = useState(INITIAL_STORE);
 
+  // Run auto-expire and purge on mount
+  useEffect(() => {
+    setStore(prev => {
+      // Auto-expire coaches
+      const now = new Date().toISOString();
+      let users = prev.users.map(u => {
+        if (u.role==="coach" && u.expiresAt && u.expiresAt < now && !u.suspended)
+          return {...u, suspended:true, suspendedAt:now};
+        return u;
+      });
+      // Cascade to alumnos
+      const suspCoaches = users.filter(u=>u.role==="coach"&&u.suspended&&!prev.users.find(p=>p.id===u.id)?.suspended).map(u=>u.id);
+      users = users.map(u => suspCoaches.includes(u.coachId) ? {...u,suspended:true,suspendedAt:now} : u);
+      // Purge 90-day suspended
+      const cutoff = new Date(Date.now()-90*24*60*60*1000).toISOString();
+      const purgedIds = users.filter(u=>u.suspended&&u.suspendedAt&&u.suspendedAt<cutoff).map(u=>u.id);
+      users = users.filter(u=>!purgedIds.includes(u.id));
+      const routines = Object.fromEntries(Object.entries(prev.routines).filter(([id])=>!purgedIds.includes(id)));
+      const msgCutoff = new Date(Date.now()-90*24*60*60*1000);
+      const messages = Object.fromEntries(Object.entries(prev.messages).map(([k,msgs])=>[k,msgs.filter(m=>!m.date||new Date(m.date)>msgCutoff)]));
+      return {...prev, users, routines, messages};
+    });
+  }, []);
+
   const dispatch = useCallback((action, payload) => {
     setStore(prev => {
       switch (action) {
@@ -162,7 +186,49 @@ function StoreProvider({ children }) {
         case "ADD_USER": return { ...prev, users: [...prev.users, payload] };
         case "UPDATE_USER": return { ...prev, users: prev.users.map(u => u.id===payload.id ? {...u,...payload} : u) };
         case "DELETE_USER": return { ...prev, users: prev.users.map(u => u.id===payload ? {...u,active:false} : u) };
-        case "SUSPEND_USER": return { ...prev, users: prev.users.map(u => u.id===payload.id ? {...u,suspended:payload.val} : u) };
+        case "SUSPEND_USER": {
+          const now = new Date().toISOString();
+          // If suspending a coach, cascade to all their alumnos
+          let updatedUsers = prev.users.map(u => {
+            if (u.id === payload.id) return {...u, suspended:payload.val, suspendedAt: payload.val ? now : null};
+            if (payload.role === "coach" && u.coachId === payload.id) return {...u, suspended:payload.val, suspendedAt: payload.val ? now : null};
+            return u;
+          });
+          return { ...prev, users: updatedUsers };
+        }
+        case "PURGE_EXPIRED": {
+          const now = new Date();
+          const cutoff = new Date(now - 90*24*60*60*1000).toISOString();
+          // Delete users suspended for 90+ days
+          const purgedIds = prev.users.filter(u => u.suspended && u.suspendedAt && u.suspendedAt < cutoff).map(u=>u.id);
+          const users = prev.users.filter(u => !purgedIds.includes(u.id));
+          // Delete routines of purged users
+          const routines = Object.fromEntries(Object.entries(prev.routines).filter(([id]) => !purgedIds.includes(id)));
+          // Prune messages older than 90 days
+          const msgCutoff = new Date(now - 90*24*60*60*1000);
+          const messages = Object.fromEntries(Object.entries(prev.messages).map(([k,msgs]) => [k, msgs.filter(m => {
+            if (!m.date) return true;
+            return new Date(m.date) > msgCutoff;
+          })]));
+          return { ...prev, users, routines, messages };
+        }
+        case "AUTO_EXPIRE": {
+          // Suspend coaches whose expiresAt has passed
+          const now = new Date().toISOString();
+          const updatedUsers = prev.users.map(u => {
+            if (u.role === "coach" && u.expiresAt && u.expiresAt < now && !u.suspended) {
+              return {...u, suspended:true, suspendedAt:now};
+            }
+            return u;
+          });
+          // Cascade to alumnos of newly suspended coaches
+          const newlySuspendedCoaches = updatedUsers.filter((u,i) => u.role==="coach" && u.suspended && !prev.users[i]?.suspended).map(u=>u.id);
+          const finalUsers = updatedUsers.map(u => {
+            if (u.role==="alumno" && newlySuspendedCoaches.includes(u.coachId)) return {...u, suspended:true, suspendedAt:now};
+            return u;
+          });
+          return { ...prev, users: finalUsers };
+        }
         case "SET_OBJECTIVES": return { ...prev, users: prev.users.map(u => u.id===payload.alumnoId ? {...u, objectives:payload.objectives} : u) };
         case "COMPLETE_OBJECTIVE": return { ...prev, users: prev.users.map(u => u.id===payload.alumnoId ? {...u, objectives:(u.objectives||[]).map(o => o.id===payload.objId ? {...o, completed:payload.val} : o)} : u) };
         // ── ROUTINES ──
@@ -544,7 +610,7 @@ function UsersModule({ currentUser }) {
   const theme = getTheme(currentUser);
   const [modal, setModal] = useState(null); // null | "add" | "edit"
   const [editing, setEditing]   = useState(null);
-  const [form, setForm]   = useState({ name:"", email:"", password:"1234", role:"alumno", gender:"male", coachId:"" });
+  const [form, setForm]   = useState({ name:"", email:"", password:"1234", role:"alumno", gender:"male", coachId:"", alumnoLimit:null, expiresAt:null, expiresInDays:"" });
   const [filter, setFilter] = useState("all");
 
   // SuperAdmin ve todos; coach ve solo sus alumnos
@@ -558,19 +624,36 @@ function UsersModule({ currentUser }) {
   const coaches = store.users.filter(u => u.role==="coach" && u.active);
 
   const openAdd = () => {
-    setForm({ name:"", email:"", password:"1234", role: currentUser.role==="coach"?"alumno":"coach", gender:"male", coachId: currentUser.role==="coach"?currentUser.id:currentUser.role==="superadmin"?"":"" });
+    setForm({ name:"", email:"", password:"1234", role: currentUser.role==="coach"?"alumno":"coach", gender:"male", coachId: currentUser.role==="coach"?currentUser.id:"", alumnoLimit:null, expiresAt:null, expiresInDays:"" });
     setModal("add");
   };
   const openEdit = (u) => { setEditing(u); setForm({...u}); setModal("edit"); };
 
   const save = () => {
     if (!form.name || !form.email) return;
+    // Compute expiresAt from expiresInDays if provided
+    let expiresAt = form.expiresAt || null;
+    if (form.expiresInDays && !isNaN(parseInt(form.expiresInDays))) {
+      const d = new Date();
+      d.setDate(d.getDate() + parseInt(form.expiresInDays));
+      expiresAt = d.toISOString();
+    }
+    const payload = { ...form, expiresAt, suspended: form.suspended||false, suspendedAt: form.suspendedAt||null };
+    delete payload.expiresInDays;
     if (modal === "add") {
-      dispatch("ADD_USER", { ...form, id:"u"+Date.now(), active:true });
+      dispatch("ADD_USER", { ...payload, id:"u"+Date.now(), active:true });
     } else {
-      dispatch("UPDATE_USER", { ...form, id:editing.id });
+      dispatch("UPDATE_USER", { ...payload, id:editing.id });
     }
     setModal(null);
+  };
+
+  // Check alumno limit for coach
+  const coachAtLimit = (coachId) => {
+    const coach = store.users.find(u=>u.id===coachId);
+    if (!coach || coach.alumnoLimit === null || coach.alumnoLimit === undefined) return false;
+    const count = store.users.filter(u=>u.role==="alumno"&&u.coachId===coachId&&u.active).length;
+    return count >= coach.alumnoLimit;
   };
 
   const roleLabel = { superadmin:"SuperAdmin", coach:"Entrenador", alumno:"Alumno" };
@@ -580,7 +663,10 @@ function UsersModule({ currentUser }) {
     <div className="fade">
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
         <H size={20}>Usuarios</H>
-        <Btn onClick={openAdd} v="sm">+ Nuevo</Btn>
+        {currentUser.role==="coach" && coachAtLimit(currentUser.id)
+          ? <div style={{ fontSize:12, color:"var(--red)", fontWeight:600, padding:"6px 12px", background:"#ef444411", borderRadius:8, border:"1px solid #ef444433" }}>⚠️ Límite alcanzado</div>
+          : <Btn onClick={openAdd} v="sm">+ Nuevo</Btn>
+        }
       </div>
 
       {currentUser.role === "superadmin" && (
@@ -604,6 +690,19 @@ function UsersModule({ currentUser }) {
                   <div style={{ fontWeight:600, fontSize:14 }}>{u.name}</div>
                   <div style={{ fontSize:12, color:"var(--sub)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.email}</div>
                   {u.coachId && <div style={{ fontSize:11, color:"var(--sub)", marginTop:1 }}>Coach: {store.users.find(c=>c.id===u.coachId)?.name}</div>}
+                  {u.role==="coach" && (
+                    <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:3 }}>
+                      <span style={{ fontSize:10, color:"var(--sub)" }}>
+                        👥 {u.alumnoLimit===null||u.alumnoLimit===undefined ? "Ilimitado" : `Máx. ${u.alumnoLimit} alumnos`}
+                        {" · "}{store.users.filter(a=>a.role==="alumno"&&a.coachId===u.id&&a.active).length} actuales
+                      </span>
+                      {u.expiresAt && (
+                        <span style={{ fontSize:10, color: new Date(u.expiresAt) < new Date() ? "var(--red)" : "var(--orange)" }}>
+                          ⏰ {new Date(u.expiresAt) < new Date() ? "Vencido" : `Vence ${new Date(u.expiresAt).toLocaleDateString("es")}`}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:5 }}>
                   <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:3 }}>
@@ -612,12 +711,12 @@ function UsersModule({ currentUser }) {
                   </div>
                   <div style={{ display:"flex", gap:4 }}>
                     <Btn onClick={()=>openEdit(u)} v="ghost" style={{ padding:"3px 10px", fontSize:11 }}>✏️</Btn>
-                    {u.role === "alumno" && (
+                    {(u.role === "alumno" || (u.role === "coach" && currentUser.role === "superadmin")) && (
                       <Btn
-                        onClick={()=>dispatch("SUSPEND_USER",{id:u.id, val:!u.suspended})}
+                        onClick={()=>dispatch("SUSPEND_USER",{id:u.id, val:!u.suspended, role:u.role})}
                         v={u.suspended ? "success" : "ghost"}
                         style={{ padding:"3px 10px", fontSize:11 }}
-                        title={u.suspended ? "Reactivar cuenta" : "Suspender cuenta"}
+                        title={u.suspended ? "Reactivar" : u.role==="coach" ? "Suspender (cascada a alumnos)" : "Suspender"}
                       >{u.suspended ? "▶ Reactivar" : "⏸ Suspender"}</Btn>
                     )}
                     <Btn onClick={()=>dispatch("DELETE_USER", u.id)} v="danger" style={{ padding:"3px 10px", fontSize:11 }}>🗑</Btn>
@@ -664,6 +763,52 @@ function UsersModule({ currentUser }) {
                   ) : (
                     <div style={{ background:"var(--surface)", borderRadius:8, padding:"8px 12px", fontSize:13, color:"var(--sub)", border:"1px solid var(--border)" }}>
                       {store.users.find(u=>u.id===currentUser.id)?.name} <span style={{ color:"var(--muted)", fontSize:11 }}>(asignado automáticamente)</span>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+            {/* Coach-specific fields: alumno limit + expiry */}
+            {form.role === "coach" && (
+              <>
+                <Divider/>
+                <div style={{ fontSize:12, fontWeight:700, color:"var(--accent)", marginBottom:8, letterSpacing:.5 }}>⚙️ CONFIGURACIÓN DEL ENTRENADOR</div>
+                <div>
+                  <Label>LÍMITE DE ALUMNOS</Label>
+                  <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                    <input
+                      type="number" min="1"
+                      placeholder="Ej: 20"
+                      value={form.alumnoLimit||""}
+                      onChange={e=>setForm(p=>({...p, alumnoLimit: e.target.value===""?null:parseInt(e.target.value)}))}
+                      style={{ flex:1 }}
+                    />
+                    <button onClick={()=>setForm(p=>({...p,alumnoLimit:null}))} style={{ background:"var(--surface)", border:"1px solid var(--border)", borderRadius:8, padding:"8px 12px", fontSize:12, color:form.alumnoLimit===null?"var(--accent)":"var(--sub)", fontWeight:600 }}>
+                      {form.alumnoLimit===null?"✓ Ilimitado":"Ilimitado"}
+                    </button>
+                  </div>
+                  <div style={{ fontSize:11, color:"var(--sub)", marginTop:4 }}>
+                    {form.alumnoLimit===null ? "Sin límite de alumnos" : `Máximo ${form.alumnoLimit} alumnos`}
+                  </div>
+                </div>
+                <div>
+                  <Label>VENCIMIENTO DE ACCESO</Label>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                    <div>
+                      <div style={{ fontSize:11, color:"var(--sub)", marginBottom:4 }}>Fecha exacta</div>
+                      <input type="date" value={form.expiresAt ? form.expiresAt.split("T")[0] : ""} onChange={e=>setForm(p=>({...p, expiresAt: e.target.value ? new Date(e.target.value).toISOString() : null, expiresInDays:""}))}/>
+                    </div>
+                    <div>
+                      <div style={{ fontSize:11, color:"var(--sub)", marginBottom:4 }}>O en X días</div>
+                      <input type="number" min="1" placeholder="Ej: 30" value={form.expiresInDays||""} onChange={e=>setForm(p=>({...p, expiresInDays:e.target.value, expiresAt:null}))}/>
+                    </div>
+                  </div>
+                  {(form.expiresAt || form.expiresInDays) && (
+                    <div style={{ fontSize:11, color:"var(--orange)", marginTop:4, display:"flex", justifyContent:"space-between" }}>
+                      <span>
+                        {form.expiresInDays ? `Vence en ${form.expiresInDays} días (${new Date(Date.now()+parseInt(form.expiresInDays)*86400000).toLocaleDateString("es")})` : `Vence el ${new Date(form.expiresAt).toLocaleDateString("es")}`}
+                      </span>
+                      <button onClick={()=>setForm(p=>({...p,expiresAt:null,expiresInDays:""}))} style={{ background:"none", border:"none", color:"var(--sub)", fontSize:12, cursor:"pointer" }}>× Sin vencimiento</button>
                     </div>
                   )}
                 </div>
@@ -1264,7 +1409,7 @@ function MessagesModule({ currentUser }) {
 
   const send = () => {
     if (!input.trim() || !selectedId) return;
-    dispatch("ADD_MESSAGE", { key, msg: { id:"msg"+Date.now(), from:currentUser.id, to:selectedId, text:input.trim(), ts:new Date().toLocaleTimeString("es",{hour:"2-digit",minute:"2-digit"}) } });
+    dispatch("ADD_MESSAGE", { key, msg: { id:"msg"+Date.now(), from:currentUser.id, to:selectedId, text:input.trim(), ts:new Date().toLocaleTimeString("es",{hour:"2-digit",minute:"2-digit"}), date:new Date().toISOString() } });
     setInput("");
   };
 
@@ -1705,7 +1850,8 @@ function AppShell({ currentUser: initUser, onLogout }) {
   const { dispatch } = useStore();
   const [currentUser, setCurrentUserLocal] = useState(initUser);
   const theme = getTheme(currentUser);
-  const [page, setPage]     = useState("inicio");
+  const isSuspendedInit = initUser.suspended === true;
+  const [page, setPage] = useState(isSuspendedInit ? "messages" : "inicio");
   const [sideOpen, setSideOpen] = useState(false);
   const [targetAlumno, setTargetAlumno] = useState(null); // para coach viendo rutinas de alumno
 
@@ -1715,6 +1861,8 @@ function AppShell({ currentUser: initUser, onLogout }) {
   };
 
   const navigate = (p, alumnoId=null) => {
+    const susp = store.users.find(u=>u.id===currentUser.id)?.suspended;
+    if (susp && p !== "messages" && p !== "config") return;
     setPage(p);
     setTargetAlumno(alumnoId);
   };
@@ -1723,7 +1871,7 @@ function AppShell({ currentUser: initUser, onLogout }) {
   const isCoach    = currentUser.role === "coach";
   const isSA       = currentUser.role === "superadmin";
 
-  const isSuspended = currentUser.suspended === true;
+  const isSuspended = store.users.find(u=>u.id===currentUser.id)?.suspended === true;
   const navItems = isAlumno
     ? isSuspended
       ? [
@@ -1817,22 +1965,27 @@ function AppShell({ currentUser: initUser, onLogout }) {
 
         {/* PAGE CONTENT */}
         <div style={{ flex:1, overflowY:"auto", padding:16 }}>
-          {isSuspended && isAlumno && (
-            <div style={{ background:"#f9731611", border:"1px solid #f9731633", borderRadius:10, padding:"12px 16px", marginBottom:14, display:"flex", alignItems:"center", gap:10 }}>
-              <span style={{ fontSize:20 }}>⚠️</span>
-              <div>
-                <div style={{ fontWeight:700, fontSize:13, color:"#f97316" }}>Cuenta suspendida</div>
-                <div style={{ fontSize:12, color:"var(--sub)", marginTop:2 }}>Solo podés acceder a mensajes. Contactá a tu entrenador para más información.</div>
-              </div>
-            </div>
-          )}
+
           {page === "inicio"   && <InicioModule   currentUser={currentUser} onNavigate={navigate}/>}
           {page === "training" && <TrainingModule currentUser={currentUser}/>}
           {page === "progress" && <ProgressModule currentUser={currentUser} targetAlumnoId={targetAlumno}/>}
           {page === "routines" && <RoutinesModule currentUser={currentUser} targetAlumnoId={targetAlumno}/>}
           {page === "users"    && <UsersModule    currentUser={currentUser}/>}
           {page === "overview" && <OverviewModule currentUser={currentUser} onNavigate={navigate}/>}
-          {page === "messages" && <MessagesModule currentUser={currentUser}/>}
+          {page === "messages" && (
+            <>
+              {isSuspended && isAlumno && (
+                <div style={{ background:"#f9731611", border:"1px solid #f9731633", borderRadius:10, padding:"12px 16px", marginBottom:14, display:"flex", alignItems:"center", gap:10 }}>
+                  <span style={{ fontSize:20 }}>⚠️</span>
+                  <div>
+                    <div style={{ fontWeight:700, fontSize:13, color:"#f97316" }}>Cuenta suspendida</div>
+                    <div style={{ fontSize:12, color:"var(--sub)", marginTop:2 }}>Tu cuenta está suspendida. Escribile a tu entrenador para más información.</div>
+                  </div>
+                </div>
+              )}
+              <MessagesModule currentUser={currentUser}/>
+            </>
+          )}
           {page === "config"   && (
             <ConfigModule currentUser={currentUser} onLogout={onLogout} onUserUpdate={setCurrentUser}/>
           )}
