@@ -1,6 +1,6 @@
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// FUERZA INTELIGENTE V3 — Arquitectura Modular
+// FUERZA INTELIGENTE V5 — Arquitectura Modular
 // ═══════════════════════════════════════════════════════════════════════════════
 //
 //  MÓDULOS (cada bloque es independiente):
@@ -22,6 +22,55 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { useState, useContext, createContext, useCallback, useRef, useEffect } from "react";
+
+
+// ───────────────────────────────────────────────────────────────────────────────
+// HOLIDAYS API — feriados por país via date.nager.at (gratis, sin key)
+// ───────────────────────────────────────────────────────────────────────────────
+const COUNTRY_LIST = [
+  { code:"AR", name:"Argentina" }, { code:"UY", name:"Uruguay" },
+  { code:"CL", name:"Chile" },     { code:"BR", name:"Brasil" },
+  { code:"CO", name:"Colombia" },  { code:"MX", name:"México" },
+  { code:"ES", name:"España" },    { code:"US", name:"Estados Unidos" },
+  { code:"GB", name:"Reino Unido"},{ code:"IT", name:"Italia" },
+  { code:"DE", name:"Alemania" },  { code:"FR", name:"Francia" },
+];
+
+async function fetchHolidays(countryCode, year) {
+  try {
+    const res = await fetch(`https://date.nager.at/api/v3/PublicHolidays/${year}/${countryCode}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.map(h => h.date); // ["2025-01-01", ...]
+  } catch { return []; }
+}
+
+const DOW_NAMES = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+const DOW_FULL  = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
+
+function addDays(dateStr, n) {
+  const d = new Date(dateStr + "T12:00:00");
+  d.setDate(d.getDate() + n);
+  return d.toISOString().split("T")[0];
+}
+
+function buildSchedule(startDate, trainingDays, totalSessions) {
+  // trainingDays: [1,3,5] (Mon=1,...,Sun=0)
+  const result = [];
+  let cursor = new Date(startDate + "T12:00:00");
+  let found = 0;
+  let safety = 0;
+  while (found < totalSessions && safety < 500) {
+    const dow = cursor.getDay(); // 0=Sun
+    if (trainingDays.includes(dow)) {
+      result.push(cursor.toISOString().split("T")[0]);
+      found++;
+    }
+    cursor.setDate(cursor.getDate() + 1);
+    safety++;
+  }
+  return result;
+}
 
 // ───────────────────────────────────────────────────────────────────────────────
 // [M1] STORE — Estado global compartido entre todos los módulos
@@ -137,6 +186,9 @@ const INITIAL_STORE = {
     ],
     "c2-a3": [],
   },
+  // Métricas de seguimiento por objetivo (M11)
+  // Structure: { alumnoId: { objId: [{date, fields...}] } }
+  metrics: { a1:{}, a2:{}, a3:{} },
   // Progreso histórico por alumno/ejercicio
   progress: {
     a1: {
@@ -158,23 +210,55 @@ function StoreProvider({ children }) {
   // Run auto-expire and purge on mount
   useEffect(() => {
     setStore(prev => {
-      // Auto-expire coaches
       const now = new Date().toISOString();
+      const cutoff = new Date(Date.now() - 90*24*60*60*1000).toISOString();
+      const msgCutoff = new Date(Date.now() - 90*24*60*60*1000);
+
+      // 1. Auto-expire coaches whose expiresAt passed
       let users = prev.users.map(u => {
         if (u.role==="coach" && u.expiresAt && u.expiresAt < now && !u.suspended)
           return {...u, suspended:true, suspendedAt:now};
         return u;
       });
-      // Cascade to alumnos
-      const suspCoaches = users.filter(u=>u.role==="coach"&&u.suspended&&!prev.users.find(p=>p.id===u.id)?.suspended).map(u=>u.id);
-      users = users.map(u => suspCoaches.includes(u.coachId) ? {...u,suspended:true,suspendedAt:now} : u);
-      // Purge 90-day suspended
-      const cutoff = new Date(Date.now()-90*24*60*60*1000).toISOString();
-      const purgedIds = users.filter(u=>u.suspended&&u.suspendedAt&&u.suspendedAt<cutoff).map(u=>u.id);
-      users = users.filter(u=>!purgedIds.includes(u.id));
-      const routines = Object.fromEntries(Object.entries(prev.routines).filter(([id])=>!purgedIds.includes(id)));
-      const msgCutoff = new Date(Date.now()-90*24*60*60*1000);
-      const messages = Object.fromEntries(Object.entries(prev.messages).map(([k,msgs])=>[k,msgs.filter(m=>!m.date||new Date(m.date)>msgCutoff)]));
+
+      // 2. Cascade suspension to alumnos of newly suspended coaches
+      const newlySuspCoaches = users
+        .filter(u => u.role==="coach" && u.suspended && !prev.users.find(p=>p.id===u.id)?.suspended)
+        .map(u=>u.id);
+      users = users.map(u =>
+        newlySuspCoaches.includes(u.coachId) ? {...u, suspended:true, suspendedAt:now} : u
+      );
+
+      // 3. Purge rules:
+      //    - Coaches suspended 90+ days → delete account + cascade delete their suspended alumnos
+      //    - Alumnos suspended 90+ days → delete account
+      //    - Active users → NEVER delete account
+      const suspendedCoachesToPurge = users
+        .filter(u => u.role==="coach" && u.suspended && u.suspendedAt && u.suspendedAt < cutoff)
+        .map(u => u.id);
+
+      // Alumnos to purge: either suspended 90+ days themselves, OR belong to a purged coach and are also suspended
+      const alumnosToPurge = users
+        .filter(u => u.role==="alumno" && u.suspended && u.suspendedAt && u.suspendedAt < cutoff)
+        .map(u => u.id);
+
+      const purgedIds = [...suspendedCoachesToPurge, ...alumnosToPurge];
+
+      users = users.filter(u => !purgedIds.includes(u.id));
+
+      // 4. Delete routines of purged users
+      const routines = Object.fromEntries(
+        Object.entries(prev.routines).filter(([id]) => !purgedIds.includes(id))
+      );
+
+      // 5. Purge messages older than 90 days — for ALL users
+      const messages = Object.fromEntries(
+        Object.entries(prev.messages).map(([k, msgs]) => [
+          k,
+          msgs.filter(m => !m.date || new Date(m.date) > msgCutoff)
+        ])
+      );
+
       return {...prev, users, routines, messages};
     });
   }, []);
@@ -196,20 +280,39 @@ function StoreProvider({ children }) {
           });
           return { ...prev, users: updatedUsers };
         }
+        case "RESCHEDULE_ROUTINE": {
+          // Move a routine's scheduled date
+          const { alumnoId, rutinaId, newDate } = payload;
+          return { ...prev, routines: { ...prev.routines, [alumnoId]: prev.routines[alumnoId].map(r =>
+            r.id===rutinaId ? {...r, scheduledDate:newDate} : r
+          )}};
+        }
         case "PURGE_EXPIRED": {
           const now = new Date();
           const cutoff = new Date(now - 90*24*60*60*1000).toISOString();
-          // Delete users suspended for 90+ days
-          const purgedIds = prev.users.filter(u => u.suspended && u.suspendedAt && u.suspendedAt < cutoff).map(u=>u.id);
-          const users = prev.users.filter(u => !purgedIds.includes(u.id));
-          // Delete routines of purged users
-          const routines = Object.fromEntries(Object.entries(prev.routines).filter(([id]) => !purgedIds.includes(id)));
-          // Prune messages older than 90 days
           const msgCutoff = new Date(now - 90*24*60*60*1000);
-          const messages = Object.fromEntries(Object.entries(prev.messages).map(([k,msgs]) => [k, msgs.filter(m => {
-            if (!m.date) return true;
-            return new Date(m.date) > msgCutoff;
-          })]));
+
+          // Coaches suspended 90+ days → purge
+          const suspendedCoachesToPurge = prev.users
+            .filter(u => u.role==="coach" && u.suspended && u.suspendedAt && u.suspendedAt < cutoff)
+            .map(u => u.id);
+
+          // Alumnos suspended 90+ days → purge
+          const alumnosToPurge = prev.users
+            .filter(u => u.role==="alumno" && u.suspended && u.suspendedAt && u.suspendedAt < cutoff)
+            .map(u => u.id);
+
+          const purgedIds = [...suspendedCoachesToPurge, ...alumnosToPurge];
+
+          // Active users are NEVER purged regardless of anything
+          const users = prev.users.filter(u => !purgedIds.includes(u.id));
+          const routines = Object.fromEntries(Object.entries(prev.routines).filter(([id]) => !purgedIds.includes(id)));
+
+          // Messages older than 90 days → purge for everyone
+          const messages = Object.fromEntries(Object.entries(prev.messages).map(([k,msgs]) => [
+            k, msgs.filter(m => !m.date || new Date(m.date) > msgCutoff)
+          ]));
+
           return { ...prev, users, routines, messages };
         }
         case "AUTO_EXPIRE": {
@@ -259,6 +362,21 @@ function StoreProvider({ children }) {
           return { ...prev, messages: { ...prev.messages, [key]: [...(prev.messages[key]||[]), payload.msg] } };
         }
         // ── PROGRESS ──
+        case "ADD_METRIC": {
+          // payload: { alumnoId, objId, entry: {date, ...fields} }
+          const { alumnoId, objId, entry } = payload;
+          const prev_metrics = prev.metrics || {};
+          const alumno_metrics = prev_metrics[alumnoId] || {};
+          const obj_metrics = alumno_metrics[objId] || [];
+          return { ...prev, metrics: { ...prev_metrics, [alumnoId]: { ...alumno_metrics, [objId]: [...obj_metrics, entry] } } };
+        }
+        case "DELETE_METRIC": {
+          const { alumnoId, objId, entryIdx } = payload;
+          const prev_metrics = prev.metrics || {};
+          const alumno_metrics = prev_metrics[alumnoId] || {};
+          const obj_metrics = (alumno_metrics[objId] || []).filter((_,i)=>i!==entryIdx);
+          return { ...prev, metrics: { ...prev_metrics, [alumnoId]: { ...alumno_metrics, [objId]: obj_metrics } } };
+        }
         case "ADD_PROGRESS": {
           const { alumnoId, exercise, value } = payload;
           const cur = prev.progress[alumnoId]?.[exercise] || [];
@@ -837,42 +955,90 @@ function UsersModule({ currentUser }) {
 // [M8] IMPORT MODULE — CSV / XLSX upload
 // ───────────────────────────────────────────────────────────────────────────────
 function ImportModule({ alumnoId, onImport, onClose }) {
-  const [file, setFile]     = useState(null);
-  const [sheets, setSheets] = useState([]); // [{ name, exercises[] }]
-  const [error, setError]   = useState("");
-  const [step, setStep]     = useState("choose"); // choose | preview | done
+  const fileRef = useRef();
+  // Steps: choose → schedule → preview → done
+  const [step, setStep]         = useState("choose");
+  const [file, setFile]         = useState(null);
+  const [sheets, setSheets]     = useState([]);
+  const [editSheets, setEditSheets] = useState([]); // editable copy
+  const [editingSheet, setEditingSheet] = useState(null); // index being edited
+  const [error, setError]       = useState("");
   const [importing, setImporting] = useState(false);
   const [previewSheet, setPreviewSheet] = useState(0);
-  const fileRef = useRef();
 
-  // ── Plantilla XLSX multi-hoja ─────────────────────────────────────────────
-  const downloadTemplate = async () => {
-    // Dynamically load SheetJS
-    if (!window.XLSX) {
-      await new Promise((res, rej) => {
-        const s = document.createElement("script");
-        s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
-        s.onload = res; s.onerror = rej;
-        document.head.appendChild(s);
-      });
-    }
-    const XLSX = window.XLSX;
-    const wb = XLSX.utils.book_new();
-    // Create 3 example sheets (Dia_1, Dia_2, Dia_3)
-    for (let d = 1; d <= 3; d++) {
-      const data = [
-        ["nombre_ejercicio","series","reps","porcentaje_1rm","peso_objetivo","descanso","instruccion"],
-        ["Sentadilla trasera", 5, 5, "85%", "102.5 kg", "2-3 min", "Baja controlada"],
-        ["Peso muerto rumano", 4, 6, "75%", "90 kg", "2 min", "Siente el estiramiento"],
-        ["Press de banca", 3, 8, "70%", "80 kg", "90 seg", "Recorrido completo"],
-      ];
-      const ws = XLSX.utils.aoa_to_sheet(data);
-      XLSX.utils.book_append_sheet(wb, ws, `Dia_${d}`);
-    }
-    XLSX.writeFile(wb, "plantilla_rutina_trimestral.xlsx");
+  // Schedule config
+  const [startDate, setStartDate]       = useState(() => new Date().toISOString().split("T")[0]);
+  const [trainingDays, setTrainingDays] = useState([1,3,5]); // Mon Wed Fri
+  const [country, setCountry]           = useState("AR");
+  const [holidays, setHolidays]         = useState([]);
+  const [schedule, setSchedule]         = useState([]); // computed dates
+  const [conflicts, setConflicts]       = useState([]); // holiday conflicts
+  const [rescheduled, setRescheduled]   = useState({}); // {idx: newDate}
+
+  const DOW_LABELS = [{v:1,l:"Lun"},{v:2,l:"Mar"},{v:3,l:"Mié"},{v:4,l:"Jue"},{v:5,l:"Vie"},{v:6,l:"Sáb"},{v:0,l:"Dom"}];
+
+  const toggleDay = (d) => setTrainingDays(p => p.includes(d) ? p.filter(x=>x!==d) : [...p,d].sort());
+
+  const computeSchedule = (hols) => {
+    if (!trainingDays.length || !sheets.length) return;
+    const sched = buildSchedule(startDate, trainingDays, sheets.length);
+    setSchedule(sched);
+    const conf = sched.map((date, i) => hols.includes(date) ? i : null).filter(x=>x!==null);
+    setConflicts(conf);
+    setRescheduled({});
   };
 
-  // ── Parse rows from a sheet's JSON ───────────────────────────────────────
+  const loadHolidays = async () => {
+    const year = new Date(startDate).getFullYear();
+    const h = await fetchHolidays(country, year);
+    // also fetch next year in case plan spans year boundary
+    const h2 = await fetchHolidays(country, year+1);
+    const all = [...new Set([...h,...h2])];
+    setHolidays(all);
+    return all;
+  };
+
+  const goToSchedule = async () => {
+    const hols = await loadHolidays();
+    computeSchedule(hols);
+    setEditSheets(sheets.map(s=>({...s, exercises:[...s.exercises.map(e=>({...e}))]})));
+    setStep("schedule");
+  };
+
+  useEffect(() => {
+    if (step==="schedule" && trainingDays.length && startDate) computeSchedule(holidays);
+  }, [trainingDays, startDate]);
+
+  // Available dates to reschedule a conflicted session
+  const getAvailableDates = (sessionIdx) => {
+    const sessionDate = schedule[sessionIdx];
+    const usedDates = new Set([...schedule, ...Object.values(rescheduled)]);
+    usedDates.delete(sessionDate);
+    const candidates = [];
+    // Look for free days in ±14 day window that are not training days and not already used
+    for (let d=-1; d>=-(14); d--) {
+      const candidate = addDays(sessionDate, d);
+      const dow = new Date(candidate+"T12:00:00").getDay();
+      if (!trainingDays.includes(dow) && !usedDates.has(candidate) && candidate >= startDate) {
+        candidates.push(candidate);
+      }
+    }
+    for (let d=1; d<=14; d++) {
+      const candidate = addDays(sessionDate, d);
+      const dow = new Date(candidate+"T12:00:00").getDay();
+      if (!trainingDays.includes(dow) && !usedDates.has(candidate)) {
+        candidates.push(candidate);
+      }
+    }
+    return candidates.slice(0,8);
+  };
+
+  const reschedule = (sessionIdx, newDate) => {
+    setRescheduled(p => ({...p, [sessionIdx]: newDate}));
+    setConflicts(p => p.filter(c=>c!==sessionIdx));
+  };
+
+  // ── Parse CSV/XLSX ────────────────────────────────────────────────────────
   const parseRows = (rows, sheetName) => {
     if (!rows || rows.length < 2) return [];
     const headers = rows[0].map(h => String(h||"").trim().toLowerCase());
@@ -892,102 +1058,120 @@ function ImportModule({ alumnoId, onImport, onClose }) {
     });
   };
 
-  // ── Handle file upload ────────────────────────────────────────────────────
   const handleFile = async (f) => {
     setFile(f); setError(""); setSheets([]);
     setImporting(true);
     try {
-      // Load SheetJS dynamically
       if (!window.XLSX) {
-        await new Promise((res, rej) => {
-          const s = document.createElement("script");
-          s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
-          s.onload = res; s.onerror = rej;
-          document.head.appendChild(s);
-        });
+        await new Promise((res,rej)=>{ const s=document.createElement("script"); s.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"; s.onload=res; s.onerror=rej; document.head.appendChild(s); });
       }
       const XLSX = window.XLSX;
       const buf  = await f.arrayBuffer();
       const wb   = XLSX.read(buf, { type:"array" });
-
-      if (f.name.endsWith(".csv")) {
-        // Single CSV → one sheet
-        const text = await f.text();
-        const ws   = XLSX.read(text, { type:"string" }).Sheets["Sheet1"] ||
-                     Object.values(XLSX.read(text, { type:"string" }).Sheets)[0];
+      const parsed = wb.SheetNames.map(name => {
+        const ws   = wb.Sheets[name];
         const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:"" });
-        const exercises = parseRows(rows, "Dia_1");
-        if (!exercises.length) throw new Error("No se detectaron ejercicios en el archivo");
-        setSheets([{ name:"Dia_1", exercises }]);
-      } else {
-        // XLSX — puede tener múltiples hojas (ej: 36 días)
-        const parsed = wb.SheetNames.map(name => {
-          const ws   = wb.Sheets[name];
-          const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:"" });
-          return { name, exercises: parseRows(rows, name) };
-        }).filter(s => s.exercises.length > 0);
-
-        if (!parsed.length) throw new Error("No se encontraron hojas con datos válidos");
-        setSheets(parsed);
-      }
-      setPreviewSheet(0);
-      setStep("preview");
-    } catch(e) {
-      setError("Error al leer el archivo: " + e.message);
-    } finally {
-      setImporting(false);
-    }
+        return { name, exercises: parseRows(rows, name) };
+      }).filter(s => s.exercises.length > 0);
+      if (!parsed.length) throw new Error("No se encontraron hojas con datos válidos");
+      setSheets(parsed);
+      setStep("schedule");
+      const hols = await loadHolidays();
+      const sched = buildSchedule(startDate, trainingDays, parsed.length);
+      setSchedule(sched);
+      const conf = sched.map((date,i) => hols.includes(date)?i:null).filter(x=>x!==null);
+      setConflicts(conf);
+      setEditSheets(parsed.map(s=>({...s, exercises:[...s.exercises.map(e=>({...e}))]})));
+    } catch(e) { setError("Error al leer el archivo: " + e.message); }
+    finally { setImporting(false); }
   };
 
-  // ── Import all sheets as individual routines ──────────────────────────────
+  const downloadTemplate = async () => {
+    if (!window.XLSX) {
+      await new Promise((res,rej)=>{ const s=document.createElement("script"); s.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"; s.onload=res; s.onerror=rej; document.head.appendChild(s); });
+    }
+    const XLSX = window.XLSX;
+    const wb = XLSX.utils.book_new();
+    for (let d=1; d<=3; d++) {
+      const data = [
+        ["nombre_ejercicio","series","reps","porcentaje_1rm","peso_objetivo","descanso","instruccion"],
+        ["Sentadilla trasera",5,5,"85%","102.5 kg","2-3 min","Baja controlada"],
+        ["Peso muerto rumano",4,6,"75%","90 kg","2 min","Siente el estiramiento"],
+        ["Press de banca",3,8,"70%","80 kg","90 seg","Recorrido completo"],
+      ];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), `Dia_${d}`);
+    }
+    XLSX.writeFile(wb, "plantilla_rutina_trimestral.xlsx");
+  };
+
+  // ── Confirm import ────────────────────────────────────────────────────────
   const confirmImport = () => {
     const ts = Date.now();
-    sheets.forEach((sheet, i) => {
+    const finalSheets = editSheets.length ? editSheets : sheets;
+    finalSheets.forEach((sheet, i) => {
       const semana = Math.floor(i / 3) + 1;
+      const scheduledDate = rescheduled[i] || schedule[i] || null;
       onImport({
-        id:        `r${ts}_${i}`,
+        id:            `r${ts}_${i}`,
         alumnoId,
         semana,
-        label:     sheet.name.replace(/_/g, " "),
-        status:    "upcoming",
-        duracion:  "60–75 min",
-        exercises: sheet.exercises,
-        logs:      Object.fromEntries(sheet.exercises.map(e => [e.id, []])),
+        label:         sheet.name.replace(/_/g," "),
+        status:        "upcoming",
+        duracion:      "60–75 min",
+        scheduledDate,
+        exercises:     sheet.exercises,
+        logs:          Object.fromEntries(sheet.exercises.map(e=>[e.id,[]])),
       });
     });
     setStep("done");
     setTimeout(onClose, 2000);
   };
 
-  const cur = sheets[previewSheet];
+  // ── Edit sheet exercises inline ───────────────────────────────────────────
+  const updEditEx = (si, ei, k, v) => {
+    setEditSheets(prev => {
+      const ss = prev.map(s=>({...s, exercises:[...s.exercises]}));
+      ss[si].exercises[ei] = {...ss[si].exercises[ei], [k]:v};
+      return ss;
+    });
+  };
+  const addEditEx = (si) => {
+    setEditSheets(prev => {
+      const ss = prev.map(s=>({...s, exercises:[...s.exercises]}));
+      ss[si].exercises.push({id:"e"+Date.now(), name:"", sets:3, reps:"8", pct:"—", peso:"", descanso:"90 seg", instruccion:""});
+      return ss;
+    });
+  };
+  const remEditEx = (si, ei) => {
+    setEditSheets(prev => {
+      const ss = prev.map(s=>({...s, exercises:[...s.exercises]}));
+      ss[si].exercises.splice(ei,1);
+      return ss;
+    });
+  };
 
+  const cur = (editSheets.length ? editSheets : sheets)[previewSheet];
+
+  // ─── RENDER ───────────────────────────────────────────────────────────────
   return (
     <div>
+      {/* ── STEP: CHOOSE ── */}
       {step === "choose" && (
         <>
           <div style={{ background:"var(--surface)", borderRadius:10, padding:14, marginBottom:14 }}>
             <div style={{ fontSize:13, fontWeight:600, marginBottom:4 }}>📥 Paso 1 — Descargá la plantilla</div>
-            <div style={{ fontSize:12, color:"var(--sub)", marginBottom:10 }}>
-              Cada hoja del archivo = un día de entrenamiento.<br/>
-              Podés tener hasta 36 hojas (Dia_1 a Dia_36).
-            </div>
+            <div style={{ fontSize:12, color:"var(--sub)", marginBottom:10 }}>Cada hoja = un día. Podés tener hasta 36 hojas (Dia_1 a Dia_36).</div>
             <Btn onClick={downloadTemplate} v="ghost" full>⬇ Descargar plantilla XLSX</Btn>
           </div>
           <div style={{ background:"var(--surface)", borderRadius:10, padding:14, marginBottom:14 }}>
-            <div style={{ fontSize:13, fontWeight:600, marginBottom:6 }}>📤 Paso 2 — Subí tu archivo completado</div>
-            <div
-              onClick={()=>fileRef.current.click()}
-              onDragOver={e=>e.preventDefault()}
-              onDrop={e=>{e.preventDefault(); handleFile(e.dataTransfer.files[0]);}}
-              style={{ border:"2px dashed var(--border)", borderRadius:10, padding:"28px 20px", textAlign:"center", cursor:"pointer" }}
-            >
+            <div style={{ fontSize:13, fontWeight:600, marginBottom:6 }}>📤 Paso 2 — Subí el archivo completado</div>
+            <div onClick={()=>fileRef.current.click()} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();handleFile(e.dataTransfer.files[0]);}}
+              style={{ border:"2px dashed var(--border)", borderRadius:10, padding:"28px 20px", textAlign:"center", cursor:"pointer" }}>
               {importing
                 ? <div style={{ color:"var(--sub)", fontSize:13 }}>⏳ Leyendo archivo...</div>
-                : <>
-                    <div style={{ fontSize:28, marginBottom:8 }}>📁</div>
-                    <div style={{ fontSize:13, fontWeight:600, marginBottom:4 }}>{file ? file.name : "Arrastrá o hacé click para subir"}</div>
-                    <div style={{ fontSize:12, color:"var(--sub)" }}>CSV o XLSX (multi-hoja)</div>
-                  </>
+                : <><div style={{ fontSize:28, marginBottom:8 }}>📁</div>
+                    <div style={{ fontSize:13, fontWeight:600, marginBottom:4 }}>{file?file.name:"Arrastrá o hacé click para subir"}</div>
+                    <div style={{ fontSize:12, color:"var(--sub)" }}>CSV o XLSX (multi-hoja)</div></>
               }
             </div>
             <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display:"none" }} onChange={e=>e.target.files[0]&&handleFile(e.target.files[0])}/>
@@ -996,59 +1180,173 @@ function ImportModule({ alumnoId, onImport, onClose }) {
         </>
       )}
 
-      {step === "preview" && sheets.length > 0 && (
+      {/* ── STEP: SCHEDULE ── */}
+      {step === "schedule" && (
         <>
-          <div style={{ background:"#22c55e11", border:"1px solid #22c55e33", borderRadius:9, padding:"10px 14px", color:"#22c55e", fontSize:13, marginBottom:12 }}>
-            ✓ {sheets.length} días detectados · {sheets.reduce((s,sh)=>s+sh.exercises.length,0)} ejercicios en total
+          <div style={{ background:"#22c55e11", border:"1px solid #22c55e33", borderRadius:9, padding:"10px 14px", color:"#22c55e", fontSize:13, marginBottom:14 }}>
+            ✓ {sheets.length} días detectados — ahora configurá el calendario
           </div>
 
-          {/* Sheet selector */}
-          <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:12 }}>
-            {sheets.map((sh, i) => (
-              <button key={i} onClick={()=>setPreviewSheet(i)} style={{
-                background: previewSheet===i ? "var(--accent)" : "var(--surface)",
-                border: `1px solid ${previewSheet===i ? "var(--accent)" : "var(--border)"}`,
-                color: previewSheet===i ? "#fff" : "var(--sub)",
-                borderRadius:7, padding:"4px 10px", fontSize:11, fontWeight:600,
-              }}>{sh.name.replace(/_/g," ")}</button>
-            ))}
-          </div>
-
-          {/* Preview of selected sheet */}
-          {cur && (
-            <div style={{ background:"var(--surface)", borderRadius:10, padding:12, marginBottom:12 }}>
-              <div style={{ fontSize:12, fontWeight:700, marginBottom:8, color:"var(--accent)" }}>
-                {cur.name.replace(/_/g," ")} — {cur.exercises.length} ejercicios
+          {/* Country + start date */}
+          <Card style={{ marginBottom:12 }}>
+            <div style={{ fontSize:12, fontWeight:700, color:"var(--accent)", marginBottom:10 }}>📅 CONFIGURACIÓN DEL CALENDARIO</div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12 }}>
+              <div>
+                <Label>PAÍS (para feriados)</Label>
+                <select value={country} onChange={e=>{setCountry(e.target.value); loadHolidays().then(h=>computeSchedule(h));}}>
+                  {COUNTRY_LIST.map(c=><option key={c.code} value={c.code}>{c.name}</option>)}
+                </select>
               </div>
-              <div style={{ overflowX:"auto" }}>
-                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, minWidth:380 }}>
-                  <thead>
-                    <tr style={{ background:"var(--card)" }}>
-                      {["Ejercicio","Series","Reps","%1RM","Peso","Descanso"].map(h => (
+              <div>
+                <Label>FECHA DE INICIO</Label>
+                <input type="date" value={startDate} onChange={e=>{setStartDate(e.target.value); computeSchedule(holidays);}}/>
+              </div>
+            </div>
+
+            {/* Training days selector */}
+            <Label>DÍAS DE ENTRENAMIENTO</Label>
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:12 }}>
+              {DOW_LABELS.map(d=>(
+                <button key={d.v} onClick={()=>toggleDay(d.v)} style={{
+                  padding:"6px 12px", borderRadius:8, fontSize:12, fontWeight:700,
+                  background:trainingDays.includes(d.v)?"var(--accent)":"var(--surface)",
+                  border:`1px solid ${trainingDays.includes(d.v)?"var(--accent)":"var(--border)"}`,
+                  color:trainingDays.includes(d.v)?"#fff":"var(--sub)"
+                }}>{d.l}</button>
+              ))}
+            </div>
+            {trainingDays.length === 0 && <div style={{ fontSize:12, color:"var(--red)", marginBottom:8 }}>Seleccioná al menos un día</div>}
+          </Card>
+
+          {/* Conflict alerts */}
+          {conflicts.length > 0 && (
+            <Card style={{ marginBottom:12, border:"1px solid var(--orange)44" }}>
+              <div style={{ fontSize:12, fontWeight:700, color:"var(--orange)", marginBottom:10 }}>⚠️ {conflicts.length} SESIÓN{conflicts.length>1?"ES":""} EN FERIADO</div>
+              {conflicts.map(ci => (
+                <div key={ci} style={{ marginBottom:10, padding:"8px 10px", background:"var(--surface)", borderRadius:8, borderLeft:"3px solid var(--orange)" }}>
+                  <div style={{ fontSize:12, fontWeight:600, marginBottom:5 }}>
+                    {(editSheets[ci]||sheets[ci])?.name.replace(/_/g," ")} — {new Date((rescheduled[ci]||schedule[ci])+"T12:00:00").toLocaleDateString("es",{weekday:"long",day:"numeric",month:"long"})}
+                    <span style={{ color:"var(--orange)", marginLeft:6, fontSize:11 }}>🎉 Feriado</span>
+                  </div>
+                  <div style={{ fontSize:11, color:"var(--sub)", marginBottom:6 }}>Mover a:</div>
+                  <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+                    {getAvailableDates(ci).map(d=>(
+                      <button key={d} onClick={()=>reschedule(ci,d)} style={{
+                        background:"var(--card)", border:"1px solid var(--border)", borderRadius:6,
+                        padding:"4px 8px", fontSize:11, color:"var(--text)", cursor:"pointer"
+                      }}>{new Date(d+"T12:00:00").toLocaleDateString("es",{weekday:"short",day:"numeric",month:"short"})}</button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </Card>
+          )}
+
+          {/* Schedule preview — show first 6 sessions */}
+          {schedule.length > 0 && (
+            <Card style={{ marginBottom:12 }}>
+              <div style={{ fontSize:12, fontWeight:700, color:"var(--sub)", marginBottom:8 }}>PRIMERAS SESIONES PROGRAMADAS</div>
+              {schedule.slice(0,6).map((date,i) => {
+                const finalDate = rescheduled[i] || date;
+                const isConflict = holidays.includes(date) && !rescheduled[i];
+                const isRescheduled = !!rescheduled[i];
+                return (
+                  <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 0", borderBottom:"1px solid var(--border)" }}>
+                    <div style={{ fontSize:12 }}>
+                      <span style={{ fontWeight:600, color:"var(--sub)" }}>Sem {Math.floor(i/trainingDays.length)+1} · </span>
+                      {(editSheets[i]||sheets[i])?.name.replace(/_/g," ")}
+                    </div>
+                    <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+                      <span style={{ fontSize:11, color:isConflict?"var(--orange)":isRescheduled?"var(--green)":"var(--sub)" }}>
+                        {new Date(finalDate+"T12:00:00").toLocaleDateString("es",{weekday:"short",day:"numeric",month:"short"})}
+                      </span>
+                      {isConflict && <span style={{ fontSize:10 }}>⚠️</span>}
+                      {isRescheduled && <span style={{ fontSize:10, color:"var(--green)" }}>✓</span>}
+                    </div>
+                  </div>
+                );
+              })}
+              {schedule.length > 6 && <div style={{ fontSize:11, color:"var(--sub)", textAlign:"center", marginTop:8 }}>+{schedule.length-6} sesiones más...</div>}
+            </Card>
+          )}
+
+          {/* Routine editor — sheet tabs + inline edit */}
+          <Card style={{ marginBottom:12 }}>
+            <div style={{ fontSize:12, fontWeight:700, color:"var(--sub)", marginBottom:8 }}>✏️ REVISAR Y EDITAR RUTINAS</div>
+            <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:10 }}>
+              {(editSheets.length?editSheets:sheets).map((sh,i)=>(
+                <button key={i} onClick={()=>{setPreviewSheet(i);setEditingSheet(editingSheet===i?null:i);}} style={{
+                  background:previewSheet===i?"var(--accent)":"var(--surface)",
+                  border:`1px solid ${previewSheet===i?"var(--accent)":"var(--border)"}`,
+                  color:previewSheet===i?"#fff":"var(--sub)",
+                  borderRadius:7, padding:"4px 10px", fontSize:11, fontWeight:600,
+                }}>{sh.name.replace(/_/g," ")}</button>
+              ))}
+            </div>
+
+            {cur && editingSheet === previewSheet ? (
+              // Edit mode
+              <div>
+                <div style={{ fontSize:12, fontWeight:700, color:"var(--accent)", marginBottom:8 }}>{cur.name.replace(/_/g," ")} — Editando</div>
+                {cur.exercises.map((ex,ei)=>(
+                  <div key={ei} style={{ background:"var(--surface)", borderRadius:9, padding:10, marginBottom:6 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}>
+                      <span style={{ fontSize:11, color:"var(--sub)", fontWeight:600 }}>Ejercicio {ei+1}</span>
+                      <button onClick={()=>remEditEx(previewSheet,ei)} style={{ background:"none", border:"none", color:"var(--red)", fontSize:15, cursor:"pointer" }}>×</button>
+                    </div>
+                    <input value={ex.name} onChange={e=>updEditEx(previewSheet,ei,"name",e.target.value)} placeholder="Nombre" style={{ marginBottom:5 }}/>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:5 }}>
+                      <input type="number" value={ex.sets} onChange={e=>updEditEx(previewSheet,ei,"sets",e.target.value)} placeholder="Series"/>
+                      <input value={ex.reps} onChange={e=>updEditEx(previewSheet,ei,"reps",e.target.value)} placeholder="Reps"/>
+                      <input value={ex.peso} onChange={e=>updEditEx(previewSheet,ei,"peso",e.target.value)} placeholder="Peso"/>
+                      <input value={ex.descanso} onChange={e=>updEditEx(previewSheet,ei,"descanso",e.target.value)} placeholder="Descanso"/>
+                    </div>
+                  </div>
+                ))}
+                <Btn onClick={()=>addEditEx(previewSheet)} v="ghost" full style={{ fontSize:12, marginTop:4 }}>+ Agregar ejercicio</Btn>
+                <Btn onClick={()=>setEditingSheet(null)} v="success" full style={{ fontSize:12, marginTop:6 }}>✓ Listo</Btn>
+              </div>
+            ) : cur ? (
+              // View mode
+              <div>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:"var(--accent)" }}>{cur.name.replace(/_/g," ")} — {cur.exercises.length} ejercicios</div>
+                  <Btn onClick={()=>setEditingSheet(previewSheet)} v="ghost" style={{ fontSize:11, padding:"4px 10px" }}>✏️ Editar</Btn>
+                </div>
+                <div style={{ overflowX:"auto" }}>
+                  <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11, minWidth:380 }}>
+                    <thead><tr style={{ background:"var(--card)" }}>
+                      {["Ejercicio","Series","Reps","%1RM","Peso","Descanso"].map(h=>(
                         <th key={h} style={{ padding:"5px 8px", textAlign:"left", color:"var(--sub)", fontWeight:700 }}>{h}</th>
                       ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cur.exercises.map((e,i) => (
-                      <tr key={i} style={{ borderTop:"1px solid var(--border)" }}>
-                        <td style={{ padding:"6px 8px", fontWeight:600 }}>{e.name}</td>
-                        <td style={{ padding:"6px 8px" }}>{e.sets}</td>
-                        <td style={{ padding:"6px 8px" }}>{e.reps}</td>
-                        <td style={{ padding:"6px 8px", color:"var(--accent)" }}>{e.pct}</td>
-                        <td style={{ padding:"6px 8px" }}>{e.peso}</td>
-                        <td style={{ padding:"6px 8px" }}>{e.descanso}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </tr></thead>
+                    <tbody>
+                      {cur.exercises.map((e,i)=>(
+                        <tr key={i} style={{ borderTop:"1px solid var(--border)" }}>
+                          <td style={{ padding:"6px 8px", fontWeight:600 }}>{e.name}</td>
+                          <td style={{ padding:"6px 8px" }}>{e.sets}</td>
+                          <td style={{ padding:"6px 8px" }}>{e.reps}</td>
+                          <td style={{ padding:"6px 8px", color:"var(--accent)" }}>{e.pct}</td>
+                          <td style={{ padding:"6px 8px" }}>{e.peso}</td>
+                          <td style={{ padding:"6px 8px" }}>{e.descanso}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
+            ) : null}
+          </Card>
+
+          {conflicts.length > 0 && (
+            <div style={{ background:"#f9731611", border:"1px solid #f9731633", borderRadius:9, padding:"10px 14px", fontSize:12, color:"var(--orange)", marginBottom:12 }}>
+              ⚠️ Tenés {conflicts.length} sesión{conflicts.length>1?"es":""} en feriado sin resolver. Podés importar igual o moverlas arriba.
             </div>
           )}
 
           <div style={{ display:"flex", gap:8 }}>
             <Btn v="ghost" onClick={()=>{setStep("choose");setSheets([]);setFile(null);}} full>← Volver</Btn>
-            <Btn onClick={confirmImport} full>Importar {sheets.length} días ✓</Btn>
+            <Btn onClick={confirmImport} full disabled={!trainingDays.length}>Importar {sheets.length} días ✓</Btn>
           </div>
         </>
       )}
@@ -1063,6 +1361,7 @@ function ImportModule({ alumnoId, onImport, onClose }) {
     </div>
   );
 }
+
 
 // ───────────────────────────────────────────────────────────────────────────────
 // [M4] ROUTINES MODULE
@@ -1081,8 +1380,12 @@ function RoutinesModule({ currentUser, targetAlumnoId }) {
 
   const saveRoutine = () => {
     if (!form.label || !form.exercises.length) return;
-    const r = { ...form, id:"r"+Date.now(), alumnoId, status:"upcoming", logs:Object.fromEntries(form.exercises.map(e=>[e.id,[]])) };
-    dispatch("ADD_ROUTINE", r);
+    if (modal === "edit") {
+      dispatch("UPDATE_ROUTINE", { ...form, alumnoId });
+    } else {
+      const r = { ...form, id:"r"+Date.now(), alumnoId, status:"upcoming", logs:Object.fromEntries(form.exercises.map(e=>[e.id,[]])) };
+      dispatch("ADD_ROUTINE", r);
+    }
     setModal(null);
     setForm({ label:"", duracion:"60–75 min", semana:1, exercises:[] });
   };
@@ -1113,11 +1416,15 @@ function RoutinesModule({ currentUser, targetAlumnoId }) {
               <div>
                 <H size={14}>{r.label}</H>
                 <div style={{ fontSize:12, color:"var(--sub)", marginTop:2 }}>⏱ {r.duracion} · {r.exercises.length} ejercicios</div>
+                {r.scheduledDate && <div style={{ fontSize:11, color:"var(--accent)", marginTop:2 }}>📅 {new Date(r.scheduledDate+"T12:00:00").toLocaleDateString("es",{weekday:"short",day:"numeric",month:"short"})}</div>}
               </div>
               <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:5 }}>
                 <Pill label={sl(r.status)} color={sc(r.status)}/>
                 {canEdit && (
-                  <Btn onClick={()=>dispatch("DELETE_ROUTINE",{id:r.id,alumnoId})} v="danger" style={{ padding:"3px 10px", fontSize:11 }}>🗑</Btn>
+                  <div style={{ display:"flex", gap:4 }}>
+                    <Btn onClick={()=>{ setModal("edit"); setForm({...r, exercises:[...r.exercises]}); }} v="ghost" style={{ padding:"3px 10px", fontSize:11 }}>✏️</Btn>
+                    <Btn onClick={()=>dispatch("DELETE_ROUTINE",{id:r.id,alumnoId})} v="danger" style={{ padding:"3px 10px", fontSize:11 }}>🗑</Btn>
+                  </div>
                 )}
               </div>
             </div>
@@ -1136,8 +1443,8 @@ function RoutinesModule({ currentUser, targetAlumnoId }) {
       </div>
 
       {/* ADD ROUTINE MODAL */}
-      {modal === "add" && (
-        <Modal title="Nueva Rutina" onClose={()=>setModal(null)}>
+      {(modal === "add" || modal === "edit") && (
+        <Modal title={modal==="edit"?"Editar Rutina":"Nueva Rutina"} onClose={()=>setModal(null)}>
           <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
             <div><Label>NOMBRE DE LA RUTINA</Label><input placeholder="Ej: Día 1 – Pierna Fuerza" value={form.label} onChange={e=>setForm(p=>({...p,label:e.target.value}))}/></div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
@@ -1220,6 +1527,7 @@ function TrainingModule({ currentUser }) {
       if (maxKg > 0) dispatch("ADD_PROGRESS", { alumnoId:currentUser.id, exercise:ex.name, value:maxKg });
     });
     setSaved(true);
+    setShowMetrics(true);
   };
 
   if (!active) return (
@@ -1306,7 +1614,248 @@ function TrainingModule({ currentUser }) {
           ? <div style={{ background:"#22c55e11", border:"1px solid #22c55e33", borderRadius:9, padding:12, textAlign:"center", color:"#22c55e", fontWeight:600 }}>✓ ¡Guardado con éxito!</div>
           : <Btn onClick={save} full style={{ padding:13 }}>Guardar entrenamiento 💾</Btn>
         }
+        {saved && showMetrics && (() => {
+          const meUser = store.users.find(u=>u.id===currentUser.id);
+          const myObjs = (meUser?.objectives||[]).map(o=>({...o,...OBJECTIVES_CATALOG.find(c=>c.id===o.id)}));
+          return myObjs.length > 0 ? (
+            <div style={{ marginTop:14 }}>
+              <div style={{ fontSize:12, fontWeight:700, color:"var(--accent)", marginBottom:8 }}>📊 Registrá tus métricas del ciclo</div>
+              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                {myObjs.map(o=><MetricEntryCard key={o.id} objId={o.id} alumnoId={currentUser.id}/>)}
+              </div>
+            </div>
+          ) : null;
+        })()}
       </Card>
+    </div>
+  );
+}
+
+
+// ───────────────────────────────────────────────────────────────────────────────
+// [M11] METRICS CONFIG — qué anota cada objetivo y cómo se compara
+// ───────────────────────────────────────────────────────────────────────────────
+const OBJ_METRICS = {
+  // 🔴 Fuerza
+  fuerza_max:  { fields:[{key:"peso",    label:"Peso usado",      type:"number", unit:"kg"}, {key:"reps",  label:"Reps",       type:"number"}, {key:"rpe", label:"RPE", type:"rpe"}], tip:"Si el peso sube y el RPE baja → progresás", chart:"peso" },
+  fuerza_base: { fields:[{key:"peso",    label:"Peso usado",      type:"number", unit:"kg"}, {key:"reps",  label:"Reps",       type:"number"}, {key:"rpe", label:"RPE", type:"rpe"}], tip:"Buscá subir el peso manteniendo buena técnica", chart:"peso" },
+  fuerza_expl: { fields:[{key:"peso",    label:"Peso usado",      type:"number", unit:"kg"}, {key:"reps",  label:"Reps",       type:"number"}, {key:"rpe", label:"RPE", type:"rpe"}], tip:"Enfocate en la velocidad de ejecución", chart:"peso" },
+  potencia:    { fields:[{key:"peso",    label:"Peso usado",      type:"number", unit:"kg"}, {key:"reps",  label:"Reps",       type:"number"}, {key:"rpe", label:"RPE", type:"rpe"}], tip:"Buscá más fuerza en menos tiempo", chart:"peso" },
+  // 🟠 Muscular
+  hipertrofia: { fields:[{key:"peso",    label:"Peso usado",      type:"number", unit:"kg"}, {key:"reps",  label:"Reps reales", type:"number"}, {key:"rpe", label:"RPE última serie", type:"rpe"}], tip:"Intentá hacer más reps o más peso que la semana pasada", chart:"peso" },
+  hip_func:    { fields:[{key:"peso",    label:"Peso usado",      type:"number", unit:"kg"}, {key:"reps",  label:"Reps reales", type:"number"}, {key:"rpe", label:"RPE última serie", type:"rpe"}], tip:"Más reps o más peso = progreso funcional", chart:"peso" },
+  res_musc:    { fields:[{key:"reps",    label:"Reps totales",    type:"number"}, {key:"tiempo", label:"Tiempo sostenido", type:"number", unit:"seg"}], tip:"Hacé más reps o descansá menos que la semana pasada", chart:"reps" },
+  // 🟡 Energía
+  aerobico:    { fields:[{key:"tiempo",  label:"Tiempo total",    type:"number", unit:"min"}, {key:"distancia", label:"Distancia", type:"number", unit:"km"}, {key:"sensacion", label:"Sensación", type:"select", options:["Fácil","Medio","Difícil"]}], tip:"Más tiempo o distancia con la misma sensación = progreso", chart:"tiempo" },
+  anaerobico:  { fields:[{key:"tiempo",  label:"Tiempo del esfuerzo", type:"number", unit:"seg"}, {key:"sensacion", label:"Explosividad", type:"select", options:["Baja","Media","Alta"]}], tip:"Buscá ser más rápido, no más cansado", chart:"tiempo" },
+  res_anaer:   { fields:[{key:"rondas",  label:"Rondas completadas", type:"number"}, {key:"completo", label:"¿Terminó todo?", type:"select", options:["Sí","Casi","No"]}], tip:"Mantené el rendimiento sin caerte en las últimas rondas", chart:"rondas" },
+  acond_gral:  { fields:[{key:"rondas",  label:"Rondas totales",  type:"number"}, {key:"tiempo",    label:"Tiempo total",  type:"number", unit:"min"}], tip:"Más trabajo en el mismo tiempo = progreso", chart:"rondas" },
+  // 🔵 Control
+  core:        { fields:[{key:"tiempo",  label:"Tiempo sostenido", type:"number", unit:"seg"}, {key:"sensacion", label:"Dificultad", type:"select", options:["Fácil","Medio","Difícil"]}], tip:"Cada vez más estable o más tiempo", chart:"tiempo" },
+  movilidad:   { fields:[{key:"rango",   label:"¿Llegaste más profundo?", type:"select", options:["Sí","Igual","No"]}, {key:"sensacion", label:"Sensación", type:"select", options:["Tirante","Normal","Cómodo"]}], tip:"Buscá moverte mejor, no más fuerte", chart:null },
+  tecnica:     { fields:[{key:"calidad", label:"Calidad técnica (1-5)", type:"number"}], tip:"Que cada repetición se vea mejor que la anterior", chart:"calidad" },
+  prev_lesion: { fields:[{key:"dolor",   label:"Nivel de molestia (0-10)", type:"number"}, {key:"sensacion", label:"Sensación general", type:"select", options:["Bien","Regular","Mal"]}], tip:"Si baja el dolor y mejora la sensación, vamos bien", chart:"dolor" },
+  // 🟣 Composición
+  desc_grasa:  { fields:[{key:"peso",    label:"Peso corporal",   type:"number", unit:"kg"}, {key:"cintura", label:"Cintura (opcional)", type:"number", unit:"cm"}], tip:"Buscamos tendencia, no el número de un día", chart:"peso" },
+  mant_peso:   { fields:[{key:"peso",    label:"Peso corporal",   type:"number", unit:"kg"}, {key:"rendimiento", label:"Rendimiento en gym", type:"select", options:["Subió","Igual","Bajó"]}], tip:"Peso estable + rendimiento igual o mejor = éxito", chart:"peso" },
+  recomp:      { fields:[{key:"peso",    label:"Peso corporal",   type:"number", unit:"kg"}, {key:"carga",   label:"Carga en ejercicio clave", type:"number", unit:"kg"}], tip:"Si levantás más y no subís de peso, vamos bien", chart:"carga" },
+  // ⚫ Rendimiento
+  prep_comp:   { fields:[{key:"resultado", label:"Resultado específico", type:"text"}, {key:"sensacion", label:"Sensación", type:"select", options:["Listo","Regular","Lejos"]}], tip:"Medí lo que pasa en tu deporte, no solo en el gym", chart:null },
+  peaking:     { fields:[{key:"resultado", label:"Rendimiento pico", type:"text"}, {key:"fatiga", label:"Fatiga (1-10)", type:"number"}], tip:"Máximo rendimiento con mínima fatiga", chart:null },
+  transfer:    { fields:[{key:"resultado", label:"Resultado deportivo", type:"text"}], tip:"¿Se nota la mejora en tu deporte?", chart:null },
+  // ⚪ Recuperación
+  deload:      { fields:[{key:"peso",    label:"Peso usado",      type:"number", unit:"kg"}, {key:"rpe", label:"RPE", type:"rpe"}], tip:"Tiene que sentirse fácil — si no, bajá más la carga", chart:"rpe" },
+  rec_activa:  { fields:[{key:"sensacion", label:"Sensación general", type:"select", options:["Cansado","Bien","Muy bien"]}], tip:"Si te sentís mejor que antes de empezar, cumplió el objetivo", chart:null },
+};
+
+// Field renderer for metric entry forms
+function MetricFieldInput({ field, value, onChange }) {
+  if (field.type === "rpe") return (
+    <div>
+      <Label>{field.label}</Label>
+      <RPESel value={value} onChange={onChange}/>
+    </div>
+  );
+  if (field.type === "select") return (
+    <div>
+      <Label>{field.label}</Label>
+      <select value={value||""} onChange={e=>onChange(e.target.value)}>
+        <option value="">— Elegir —</option>
+        {field.options.map(o=><option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
+  );
+  return (
+    <div>
+      <Label>{field.label}{field.unit ? ` (${field.unit})` : ""}</Label>
+      <input type={field.type==="text"?"text":"number"} step="0.1" value={value||""} onChange={e=>onChange(e.target.value)} placeholder={field.unit||""}/>
+    </div>
+  );
+}
+
+// Mini metrics entry card (used inline in InicioModule and TrainingModule)
+function MetricEntryCard({ objId, alumnoId, onSaved }) {
+  const { dispatch } = useStore();
+  const cfg = OBJ_METRICS[objId];
+  const obj = OBJECTIVES_CATALOG.find(o=>o.id===objId);
+  const [vals, setVals] = useState({});
+  const [saved, setSaved] = useState(false);
+
+  if (!cfg || !obj) return null;
+
+  const save = () => {
+    if (!Object.values(vals).some(Boolean)) return;
+    dispatch("ADD_METRIC", {
+      alumnoId,
+      objId,
+      entry: { ...vals, date: new Date().toISOString(), dateLabel: new Date().toLocaleDateString("es",{day:"numeric",month:"short"}) }
+    });
+    setSaved(true);
+    if (onSaved) onSaved();
+    setTimeout(()=>setSaved(false), 2000);
+    setVals({});
+  };
+
+  return (
+    <div style={{ background:"var(--surface)", borderRadius:10, padding:12, border:"1px solid var(--border)" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10 }}>
+        <span style={{ fontSize:16 }}>{obj.emoji}</span>
+        <span style={{ fontSize:13, fontWeight:700 }}>{obj.label}</span>
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns: cfg.fields.length > 2 ? "1fr 1fr" : "1fr", gap:8, marginBottom:10 }}>
+        {cfg.fields.map(f=>(
+          <MetricFieldInput key={f.key} field={f} value={vals[f.key]} onChange={v=>setVals(p=>({...p,[f.key]:v}))}/>
+        ))}
+      </div>
+      <div style={{ fontSize:11, color:"var(--sub)", marginBottom:8, fontStyle:"italic" }}>💡 {cfg.tip}</div>
+      {saved
+        ? <div style={{ fontSize:12, color:"var(--green)", fontWeight:600, textAlign:"center" }}>✓ Guardado</div>
+        : <Btn onClick={save} full style={{ fontSize:12, padding:"7px" }}>Guardar registro</Btn>
+      }
+    </div>
+  );
+}
+
+// Full metrics history + chart for one objective
+function MetricHistory({ objId, alumnoId }) {
+  const { store, dispatch } = useStore();
+  const cfg = OBJ_METRICS[objId];
+  const obj = OBJECTIVES_CATALOG.find(o=>o.id===objId);
+  const entries = (store.metrics?.[alumnoId]?.[objId] || []);
+
+  if (!cfg || !obj) return null;
+
+  const chartField = cfg.chart;
+  const chartData  = chartField ? entries.map(e=>parseFloat(e[chartField])||0).filter(Boolean) : [];
+
+  return (
+    <div style={{ marginBottom:16 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10 }}>
+        <span style={{ fontSize:18 }}>{obj.emoji}</span>
+        <H size={15}>{obj.label}</H>
+        <Pill label={`${entries.length} registros`} color="var(--sub)" size={10}/>
+      </div>
+
+      {chartData.length > 1 && (
+        <Card style={{ marginBottom:10, padding:12 }}>
+          <div style={{ fontSize:11, color:"var(--sub)", fontWeight:600, marginBottom:6 }}>
+            EVOLUCIÓN — {cfg.fields.find(f=>f.key===chartField)?.label}
+          </div>
+          <BarChart data={chartData} color="var(--accent)" h={56}/>
+          <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"var(--sub)", marginTop:4 }}>
+            <span>{entries[0]?.dateLabel}</span>
+            <span style={{ color:"var(--accent)", fontWeight:700 }}>{chartData[chartData.length-1]} {cfg.fields.find(f=>f.key===chartField)?.unit||""}</span>
+          </div>
+        </Card>
+      )}
+
+      {entries.length === 0
+        ? <div style={{ textAlign:"center", color:"var(--sub)", fontSize:13, padding:16, background:"var(--card)", borderRadius:10, border:"1px dashed var(--border)" }}>Sin registros todavía</div>
+        : (
+          <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+            {[...entries].reverse().map((e,i)=>(
+              <div key={i} style={{ background:"var(--card)", borderRadius:9, padding:"10px 12px", display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                <div>
+                  <div style={{ fontSize:11, color:"var(--sub)", marginBottom:4 }}>{e.dateLabel}</div>
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                    {cfg.fields.map(f => e[f.key] != null && e[f.key] !== "" ? (
+                      <span key={f.key} style={{ fontSize:12 }}>
+                        <span style={{ color:"var(--sub)" }}>{f.label}: </span>
+                        <span style={{ fontWeight:600 }}>{e[f.key]}{f.unit?" "+f.unit:""}</span>
+                      </span>
+                    ) : null)}
+                  </div>
+                </div>
+                <button onClick={()=>dispatch("DELETE_METRIC",{alumnoId,objId,entryIdx:entries.length-1-i})} style={{ background:"none",border:"none",color:"var(--muted)",fontSize:15,cursor:"pointer",padding:"0 2px" }}>×</button>
+              </div>
+            ))}
+          </div>
+        )
+      }
+    </div>
+  );
+}
+
+// Full MetricsModule — sección propia con tabs por objetivo
+function MetricsModule({ currentUser }) {
+  const { store } = useStore();
+  const meUser = store.users.find(u=>u.id===currentUser.id);
+  const myObjectives = (meUser?.objectives||[]).map(o=>({
+    ...o, ...OBJECTIVES_CATALOG.find(c=>c.id===o.id)
+  }));
+  const [activeObj, setActiveObj] = useState(myObjectives[0]?.id||null);
+  const [showEntry, setShowEntry] = useState(false);
+
+  if (myObjectives.length === 0) return (
+    <div className="fade" style={{ textAlign:"center", padding:48, color:"var(--sub)" }}>
+      <div style={{ fontSize:36, marginBottom:12 }}>📊</div>
+      <H size={16}>Sin objetivos asignados</H>
+      <div style={{ fontSize:13, marginTop:6 }}>Tu entrenador todavía no te asignó objetivos del ciclo</div>
+    </div>
+  );
+
+  const cur = myObjectives.find(o=>o.id===activeObj);
+
+  return (
+    <div className="fade">
+      <H size={20} style={{ marginBottom:16 }}>Mis Métricas</H>
+
+      {/* Objective tabs */}
+      <div style={{ display:"flex", gap:6, overflowX:"auto", paddingBottom:4, marginBottom:14 }}>
+        {myObjectives.map(o=>(
+          <button key={o.id} onClick={()=>{setActiveObj(o.id);setShowEntry(false);}} style={{
+            flexShrink:0, display:"flex", alignItems:"center", gap:5, padding:"7px 12px", borderRadius:9,
+            background:activeObj===o.id?"var(--accent)":"var(--card)",
+            border:`1px solid ${activeObj===o.id?"var(--accent)":"var(--border)"}`,
+            color:activeObj===o.id?"#fff":"var(--sub)", fontSize:12, fontWeight:600,
+          }}>
+            <span>{o.emoji}</span>{o.label}
+            {o.priority==="principal" && <span style={{ fontSize:9, background:"rgba(255,255,255,.2)", borderRadius:4, padding:"1px 5px" }}>★</span>}
+          </button>
+        ))}
+      </div>
+
+      {cur && (
+        <>
+          {/* New entry toggle */}
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+            <div style={{ fontSize:12, color:"var(--sub)" }}>
+              {OBJ_METRICS[cur.id]?.tip && <span>💡 {OBJ_METRICS[cur.id].tip}</span>}
+            </div>
+            <Btn onClick={()=>setShowEntry(p=>!p)} v={showEntry?"ghost":"sm"} style={{ fontSize:12, padding:"6px 14px", flexShrink:0 }}>
+              {showEntry?"× Cancelar":"+ Nuevo registro"}
+            </Btn>
+          </div>
+
+          {showEntry && (
+            <Card style={{ marginBottom:14, border:"1px solid var(--accent)44" }}>
+              <MetricEntryCard objId={cur.id} alumnoId={currentUser.id} onSaved={()=>setShowEntry(false)}/>
+            </Card>
+          )}
+
+          <MetricHistory objId={cur.id} alumnoId={currentUser.id}/>
+        </>
+      )}
     </div>
   );
 }
@@ -1409,7 +1958,7 @@ function MessagesModule({ currentUser }) {
 
   const send = () => {
     if (!input.trim() || !selectedId) return;
-    dispatch("ADD_MESSAGE", { key, msg: { id:"msg"+Date.now(), from:currentUser.id, to:selectedId, text:input.trim(), ts:new Date().toLocaleTimeString("es",{hour:"2-digit",minute:"2-digit"}), date:new Date().toISOString() } });
+    dispatch("ADD_MESSAGE", { key, msg: { id:"msg"+Date.now(), from:currentUser.id, to:selectedId, text:input.trim(), ts:new Date().toLocaleTimeString("es",{hour:"2-digit",minute:"2-digit"}), date:new Date().toISOString(), read:false } });
     setInput("");
   };
 
@@ -1575,6 +2124,284 @@ function OverviewModule({ currentUser, onNavigate }) {
 // ───────────────────────────────────────────────────────────────────────────────
 // INICIO MODULE — dashboard personal del alumno
 // ───────────────────────────────────────────────────────────────────────────────
+
+// ─── SUPERADMIN DASHBOARD ─────────────────────────────────────────────────────
+function SADashboard() {
+  const { store } = useStore();
+  const [notes, setNotes] = useState([
+    { id:1, text:"Revisar vencimiento de Sofía el 30/06", color:"#f59e0b" },
+    { id:2, text:"Pendiente: onboarding de nuevo entrenador", color:"#3b82f6" },
+  ]);
+  const [newNote, setNewNote] = useState("");
+  const [noteColor, setNoteColor] = useState("#f59e0b");
+  const [dragId, setDragId] = useState(null);
+  const [dragOver, setDragOver] = useState(null);
+
+  const coaches    = store.users.filter(u=>u.role==="coach"&&u.active);
+  const alumnos    = store.users.filter(u=>u.role==="alumno"&&u.active);
+  const suspended  = store.users.filter(u=>u.suspended&&u.active);
+  const now        = new Date();
+
+  const expiring = coaches.filter(c => {
+    if (!c.expiresAt) return false;
+    const d = new Date(c.expiresAt);
+    const diff = (d - now) / (1000*60*60*24);
+    return diff >= 0 && diff <= 30;
+  }).sort((a,b) => new Date(a.expiresAt)-new Date(b.expiresAt));
+
+  const expired = coaches.filter(c => c.expiresAt && new Date(c.expiresAt) < now);
+
+  const addNote = () => {
+    if (!newNote.trim()) return;
+    setNotes(p => [...p, { id:Date.now(), text:newNote.trim(), color:noteColor }]);
+    setNewNote("");
+  };
+  const removeNote = (id) => setNotes(p => p.filter(n=>n.id!==id));
+  const onDragStart = (id) => setDragId(id);
+  const onDragEnd   = () => { setDragId(null); setDragOver(null); };
+  const onDrop      = (targetId) => {
+    if (dragId === targetId) return;
+    const arr = [...notes];
+    const from = arr.findIndex(n=>n.id===dragId);
+    const to   = arr.findIndex(n=>n.id===targetId);
+    arr.splice(to, 0, arr.splice(from, 1)[0]);
+    setNotes(arr);
+    setDragId(null); setDragOver(null);
+  };
+
+  const NOTE_COLORS = ["#f59e0b","#3b82f6","#22c55e","#e63946","#7c3aed","#f97316"];
+
+  return (
+    <div className="fade">
+      <div style={{ marginBottom:20 }}>
+        <H size={22}>Panel SuperAdmin 👑</H>
+        <div style={{ color:"var(--sub)", fontSize:14, marginTop:2 }}>{now.toLocaleDateString("es",{weekday:"long",day:"numeric",month:"long"})}</div>
+      </div>
+
+      {/* Metrics */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:14 }}>
+        {[
+          { icon:"🏋️", label:"Entrenadores activos", value:coaches.filter(c=>!c.suspended).length, color:"var(--accent)" },
+          { icon:"👥", label:"Alumnos activos",       value:alumnos.filter(a=>!a.suspended).length, color:"var(--green)" },
+          { icon:"⏸",  label:"Cuentas suspendidas",   value:suspended.length,                       color:"var(--orange)" },
+          { icon:"⏰",  label:"Vencen en 30 días",     value:expiring.length,                        color:"var(--yellow)" },
+        ].map((s,i) => (
+          <Card key={i} style={{ textAlign:"center", padding:14 }}>
+            <div style={{ fontSize:22, marginBottom:4 }}>{s.icon}</div>
+            <div style={{ fontFamily:"'Rajdhani',sans-serif", fontWeight:700, fontSize:32, color:s.color }}>{s.value}</div>
+            <div style={{ fontSize:11, color:"var(--sub)" }}>{s.label}</div>
+          </Card>
+        ))}
+      </div>
+
+      {/* Upcoming expirations */}
+      {(expiring.length > 0 || expired.length > 0) && (
+        <Card style={{ marginBottom:14 }}>
+          <div style={{ fontSize:11, color:"var(--sub)", fontWeight:600, letterSpacing:1, marginBottom:10 }}>⏰ VENCIMIENTOS</div>
+          {expired.map(c => (
+            <div key={c.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid var(--border)" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <Avatar name={c.name} color={THEMES.coach.accent} size={28}/>
+                <div style={{ fontSize:13, fontWeight:600 }}>{c.name}</div>
+              </div>
+              <Pill label="Vencido" color="var(--red)" size={10}/>
+            </div>
+          ))}
+          {expiring.map(c => {
+            const days = Math.ceil((new Date(c.expiresAt)-now)/(1000*60*60*24));
+            return (
+              <div key={c.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid var(--border)" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <Avatar name={c.name} color={THEMES.coach.accent} size={28}/>
+                  <div style={{ fontSize:13, fontWeight:600 }}>{c.name}</div>
+                </div>
+                <Pill label={`${days}d restantes`} color={days<=7?"var(--red)":"var(--orange)"} size={10}/>
+              </div>
+            );
+          })}
+        </Card>
+      )}
+
+      {/* Coaches overview */}
+      <Card style={{ marginBottom:14 }}>
+        <div style={{ fontSize:11, color:"var(--sub)", fontWeight:600, letterSpacing:1, marginBottom:10 }}>ENTRENADORES</div>
+        {coaches.map(coach => {
+          const alumCount = alumnos.filter(a=>a.coachId===coach.id).length;
+          const limit = coach.alumnoLimit;
+          const pct = limit ? Math.min((alumCount/limit)*100, 100) : null;
+          return (
+            <div key={coach.id} style={{ marginBottom:12 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <Avatar name={coach.name} color={THEMES.coach.accent} size={28} photo={coach.photo}/>
+                  <div>
+                    <div style={{ fontSize:13, fontWeight:600 }}>{coach.name}</div>
+                    <div style={{ fontSize:11, color:"var(--sub)" }}>{alumCount} alumnos {limit ? `/ ${limit}` : "(ilimitado)"}</div>
+                  </div>
+                </div>
+                {coach.suspended
+                  ? <Pill label="Suspendido" color="var(--orange)" size={10}/>
+                  : coach.expiresAt && new Date(coach.expiresAt) < now
+                    ? <Pill label="Vencido" color="var(--red)" size={10}/>
+                    : <Pill label="Activo" color="var(--green)" size={10}/>
+                }
+              </div>
+              {pct !== null && (
+                <div style={{ height:4, background:"var(--border)", borderRadius:2, overflow:"hidden" }}>
+                  <div style={{ height:"100%", width:`${pct}%`, background:pct>=90?"var(--red)":pct>=70?"var(--orange)":"var(--green)", borderRadius:2 }}/>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {coaches.length===0 && <div style={{ fontSize:13, color:"var(--sub)", textAlign:"center", padding:16 }}>No hay entrenadores aún</div>}
+      </Card>
+
+      {/* Pizarra de notas */}
+      <Card>
+        <div style={{ fontSize:11, color:"var(--sub)", fontWeight:600, letterSpacing:1, marginBottom:10 }}>📌 PIZARRA DE NOTAS</div>
+        <div style={{ fontSize:11, color:"var(--muted)", marginBottom:10 }}>Arrastrá las notas para reordenarlas</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:6, marginBottom:12 }}>
+          {notes.map(n => (
+            <div
+              key={n.id}
+              draggable
+              onDragStart={()=>onDragStart(n.id)}
+              onDragEnd={onDragEnd}
+              onDragOver={e=>{e.preventDefault();setDragOver(n.id);}}
+              onDrop={()=>onDrop(n.id)}
+              style={{
+                display:"flex", alignItems:"center", gap:8, padding:"10px 12px", borderRadius:9,
+                background:n.color+"22", border:`1.5px solid ${dragOver===n.id?n.color:"transparent"}`,
+                borderLeft:`4px solid ${n.color}`, cursor:"grab", opacity:dragId===n.id?.5:1,
+                transition:"opacity .15s",
+              }}
+            >
+              <span style={{ fontSize:14, color:"var(--muted)", flexShrink:0 }}>⠿</span>
+              <span style={{ flex:1, fontSize:13 }}>{n.text}</span>
+              <button onClick={()=>removeNote(n.id)} style={{ background:"none", border:"none", color:"var(--muted)", fontSize:16, cursor:"pointer", padding:"0 2px" }}>×</button>
+            </div>
+          ))}
+          {notes.length===0 && <div style={{ textAlign:"center", color:"var(--muted)", fontSize:13, padding:16 }}>Sin notas. ¡Agregá una!</div>}
+        </div>
+        <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+          <div style={{ display:"flex", gap:4 }}>
+            {NOTE_COLORS.map(col => (
+              <button key={col} onClick={()=>setNoteColor(col)} style={{ width:18, height:18, borderRadius:"50%", background:col, border:noteColor===col?"2px solid var(--text)":"2px solid transparent", cursor:"pointer" }}/>
+            ))}
+          </div>
+          <input value={newNote} onChange={e=>setNewNote(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addNote()} placeholder="Nueva nota..." style={{ flex:1, fontSize:12, padding:"6px 10px" }}/>
+          <Btn onClick={addNote} style={{ padding:"6px 12px", fontSize:12, flexShrink:0 }}>+ Agregar</Btn>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ─── COACH DASHBOARD ──────────────────────────────────────────────────────────
+function CoachDashboard({ currentUser, onNavigate }) {
+  const { store } = useStore();
+  const theme = getTheme(currentUser);
+  const now = new Date();
+  const myAlumnos = store.users.filter(u=>u.role==="alumno"&&u.coachId===currentUser.id&&u.active);
+  const activos   = myAlumnos.filter(a=>!a.suspended);
+  const suspendidos = myAlumnos.filter(a=>a.suspended);
+
+  const alumnosHoy = activos.filter(a => (store.routines[a.id]||[]).some(r=>r.status==="today"));
+  const alumnosSinRutina = activos.filter(a => (store.routines[a.id]||[]).length===0);
+
+  return (
+    <div className="fade">
+      <div style={{ marginBottom:20 }}>
+        <H size={22}>Hola, {currentUser.name.split(" ")[0]} 👋</H>
+        <div style={{ color:"var(--sub)", fontSize:14, marginTop:2 }}>{now.toLocaleDateString("es",{weekday:"long",day:"numeric",month:"long"})}</div>
+      </div>
+
+      {/* Stats */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:14 }}>
+        {[
+          { icon:"👥", label:"Alumnos activos",    value:activos.length,    color:"var(--accent)" },
+          { icon:"🔥", label:"Entrenan hoy",        value:alumnosHoy.length, color:"var(--orange)" },
+          { icon:"⏸",  label:"Suspendidos",         value:suspendidos.length,color:"var(--red)" },
+          { icon:"⚠️", label:"Sin rutina asignada", value:alumnosSinRutina.length, color:"var(--yellow)" },
+        ].map((s,i) => (
+          <Card key={i} style={{ textAlign:"center", padding:14 }}>
+            <div style={{ fontSize:22, marginBottom:4 }}>{s.icon}</div>
+            <div style={{ fontFamily:"'Rajdhani',sans-serif", fontWeight:700, fontSize:28, color:s.color }}>{s.value}</div>
+            <div style={{ fontSize:11, color:"var(--sub)", marginTop:2 }}>{s.label}</div>
+          </Card>
+        ))}
+      </div>
+
+      {/* Alumnos que entrenan hoy */}
+      {alumnosHoy.length > 0 && (
+        <Card style={{ marginBottom:12 }}>
+          <div style={{ fontSize:11, color:"var(--sub)", fontWeight:600, letterSpacing:1, marginBottom:10 }}>🔥 ENTRENAN HOY</div>
+          {alumnosHoy.map(a => {
+            const aTheme = getTheme(a);
+            const todayR = (store.routines[a.id]||[]).find(r=>r.status==="today");
+            return (
+              <div key={a.id} onClick={()=>onNavigate("routines",a.id)} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 0", borderBottom:"1px solid var(--border)", cursor:"pointer" }}>
+                <Avatar name={a.name} color={aTheme.accent} size={32} photo={a.photo}/>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:13, fontWeight:600 }}>{a.name}</div>
+                  <div style={{ fontSize:12, color:"var(--sub)" }}>{todayR?.label}</div>
+                </div>
+                <span style={{ fontSize:12, color:"var(--sub)" }}>→</span>
+              </div>
+            );
+          })}
+        </Card>
+      )}
+
+      {/* All alumnos summary */}
+      <Card style={{ marginBottom:12 }}>
+        <div style={{ fontSize:11, color:"var(--sub)", fontWeight:600, letterSpacing:1, marginBottom:10 }}>MIS ALUMNOS</div>
+        {myAlumnos.length === 0
+          ? <div style={{ textAlign:"center", color:"var(--sub)", fontSize:13, padding:16 }}>No tenés alumnos asignados aún</div>
+          : myAlumnos.map(a => {
+            const aTheme = getTheme(a);
+            const rs = store.routines[a.id]||[];
+            const done = rs.filter(r=>r.status==="done").length;
+            return (
+              <div key={a.id} onClick={()=>onNavigate("routines",a.id)} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 0", borderBottom:"1px solid var(--border)", cursor:"pointer" }}>
+                <Avatar name={a.name} color={aTheme.accent} size={32} photo={a.photo}/>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:13, fontWeight:600 }}>{a.name}</div>
+                  <div style={{ display:"flex", gap:4, marginTop:3 }}>
+                    {rs.map(r=><div key={r.id} style={{ width:8, height:8, borderRadius:2, background:sc(r.status) }}/>)}
+                    {rs.length===0 && <span style={{ fontSize:11, color:"var(--muted)" }}>Sin rutinas</span>}
+                  </div>
+                </div>
+                <div style={{ textAlign:"right" }}>
+                  {a.suspended
+                    ? <Pill label="Suspendido" color="var(--orange)" size={10}/>
+                    : <span style={{ fontSize:12, color:"var(--green)", fontWeight:600 }}>{done}/{rs.length}</span>
+                  }
+                </div>
+              </div>
+            );
+          })
+        }
+      </Card>
+
+      {/* Sin rutina warning */}
+      {alumnosSinRutina.length > 0 && (
+        <Card style={{ border:"1px solid var(--yellow)33" }}>
+          <div style={{ fontSize:11, color:"var(--yellow)", fontWeight:600, letterSpacing:1, marginBottom:8 }}>⚠️ SIN RUTINA ASIGNADA</div>
+          {alumnosSinRutina.map(a => (
+            <div key={a.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"7px 0", borderBottom:"1px solid var(--border)" }}>
+              <div style={{ fontSize:13 }}>{a.name}</div>
+              <Btn v="sm" onClick={()=>onNavigate("routines",a.id)} style={{ fontSize:11, padding:"4px 10px" }}>Asignar →</Btn>
+            </div>
+          ))}
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ─── ALUMNO DASHBOARD ─────────────────────────────────────────────────────────
 function InicioModule({ currentUser, onNavigate }) {
   const { store, dispatch } = useStore();
   const myRoutines  = store.routines[currentUser.id] || [];
@@ -1603,9 +2430,9 @@ function InicioModule({ currentUser, onNavigate }) {
       {/* Stats */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:14 }}>
         {[
-          { label:"Sesiones", value:doneCount, sub:"completadas" },
-          { label:"Esta semana", value:`${doneCount}/${myRoutines.length}`, sub:"completadas" },
-          { label:"Racha", value:"5d", sub:"sin fallar" },
+          { label:"Sesiones", value:doneCount },
+          { label:"Esta semana", value:`${doneCount}/${myRoutines.length}` },
+          { label:"Racha", value:"5d" },
         ].map((s,i) => (
           <Card key={i} style={{ padding:"10px 12px", textAlign:"center" }}>
             <div style={{ fontFamily:"'Rajdhani',sans-serif", fontWeight:700, fontSize:22, color:"var(--accent)" }}>{s.value}</div>
@@ -1614,7 +2441,6 @@ function InicioModule({ currentUser, onNavigate }) {
         ))}
       </div>
 
-      {/* Today */}
       {todayR ? (
         <Card style={{ marginBottom:12, border:"1.5px solid var(--accent)" }}>
           <div style={{ fontSize:11, color:"var(--accent)", fontWeight:700, letterSpacing:1, marginBottom:4 }}>ENTRENAMIENTO DE HOY</div>
@@ -1632,7 +2458,6 @@ function InicioModule({ currentUser, onNavigate }) {
         </Card>
       )}
 
-      {/* Objectives cards */}
       {myObjectives.length > 0 && (
         <Card style={{ marginBottom:12 }}>
           <div style={{ fontSize:11, color:"var(--sub)", fontWeight:600, letterSpacing:1, marginBottom:10 }}>
@@ -1643,12 +2468,7 @@ function InicioModule({ currentUser, onNavigate }) {
             {myObjectives.map((o,i) => {
               const catColor = OBJ_CAT_COLORS[o.cat] || "#6b7280";
               return (
-                <div key={i} style={{
-                  display:"flex", alignItems:"flex-start", gap:10,
-                  background:"var(--surface)", borderRadius:9, padding:"10px 12px",
-                  borderLeft:`3px solid ${o.completed ? "var(--green)" : o.priority==="principal" ? "var(--accent)" : "var(--border)"}`,
-                  opacity: o.completed ? .75 : 1,
-                }}>
+                <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:10, background:"var(--surface)", borderRadius:9, padding:"10px 12px", borderLeft:`3px solid ${o.completed?"var(--green)":o.priority==="principal"?"var(--accent)":"var(--border)"}`, opacity:o.completed?.75:1 }}>
                   <span style={{ fontSize:18, flexShrink:0 }}>{o.emoji}</span>
                   <div style={{ flex:1 }}>
                     <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
@@ -1658,13 +2478,8 @@ function InicioModule({ currentUser, onNavigate }) {
                     </div>
                     <div style={{ fontSize:12, color:"var(--sub)", marginTop:3 }}>{o.desc}</div>
                   </div>
-                  <button onClick={()=>toggleComplete(o.id, !o.completed)} style={{
-                    flexShrink:0, width:26, height:26, borderRadius:"50%",
-                    border:`2px solid ${o.completed?"var(--green)":"var(--border)"}`,
-                    background: o.completed?"var(--green)":"transparent",
-                    color:"#fff", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center",
-                  }} title={o.completed?"Marcar pendiente":"Marcar cumplido"}>
-                    {o.completed ? "✓" : ""}
+                  <button onClick={()=>toggleComplete(o.id,!o.completed)} style={{ flexShrink:0, width:26, height:26, borderRadius:"50%", border:`2px solid ${o.completed?"var(--green)":"var(--border)"}`, background:o.completed?"var(--green)":"transparent", color:"#fff", fontSize:13, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                    {o.completed?"✓":""}
                   </button>
                 </div>
               );
@@ -1673,15 +2488,28 @@ function InicioModule({ currentUser, onNavigate }) {
         </Card>
       )}
 
-      {/* Progress preview */}
+      {/* Metrics quick entry — one card per active objective */}
+      {myObjectives.length > 0 && (
+        <Card style={{ marginBottom:12 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+            <div style={{ fontSize:11, color:"var(--sub)", fontWeight:600, letterSpacing:1 }}>REGISTRAR MÉTRICAS</div>
+            <Btn onClick={()=>onNavigate&&onNavigate("metrics")} v="ghost" style={{ fontSize:11, padding:"3px 10px" }}>Ver historial →</Btn>
+          </div>
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            {myObjectives.slice(0,2).map(o=>(
+              <MetricEntryCard key={o.id} objId={o.id} alumnoId={currentUser.id}/>
+            ))}
+          </div>
+        </Card>
+      )}
+
       {Object.keys(progData).length > 0 && (
         <Card style={{ marginBottom:12 }}>
           <div style={{ fontSize:11, color:"var(--sub)", fontWeight:600, letterSpacing:1, marginBottom:10 }}>PROGRESO RECIENTE</div>
           {Object.entries(progData).slice(0,2).map(([ex, vals]) => (
             <div key={ex} style={{ marginBottom:10 }}>
               <div style={{ display:"flex", justifyContent:"space-between", fontSize:13, fontWeight:600, marginBottom:4 }}>
-                <span>{ex}</span>
-                <span style={{ color:"var(--green)" }}>{vals[vals.length-1]} kg</span>
+                <span>{ex}</span><span style={{ color:"var(--green)" }}>{vals[vals.length-1]} kg</span>
               </div>
               <Sparkline data={vals} color="var(--accent)" w={200} h={28}/>
             </div>
@@ -1689,7 +2517,6 @@ function InicioModule({ currentUser, onNavigate }) {
         </Card>
       )}
 
-      {/* Weekly */}
       <Card>
         <div style={{ fontSize:11, color:"var(--sub)", fontWeight:600, letterSpacing:1, marginBottom:10 }}>SEMANA</div>
         {myRoutines.map(r => (
@@ -1699,16 +2526,13 @@ function InicioModule({ currentUser, onNavigate }) {
             <Pill label={sl(r.status)} color={sc(r.status)} size={10}/>
           </div>
         ))}
-        {myRoutines.length === 0 && <div style={{ fontSize:13, color:"var(--sub)", padding:8 }}>Sin rutinas asignadas aún</div>}
+        {myRoutines.length===0 && <div style={{ fontSize:13, color:"var(--sub)", padding:8 }}>Sin rutinas asignadas aún</div>}
       </Card>
     </div>
   );
 }
 
 
-// ───────────────────────────────────────────────────────────────────────────────
-// [M9] CONFIG MODULE — perfil editable, foto, contraseña, datos personales
-// ───────────────────────────────────────────────────────────────────────────────
 function ConfigModule({ currentUser, onLogout, onUserUpdate }) {
   const theme = getTheme(currentUser);
   const isSA = currentUser.role === "superadmin";
@@ -1872,10 +2696,25 @@ function AppShell({ currentUser: initUser, onLogout }) {
   const isSA       = currentUser.role === "superadmin";
 
   const isSuspended = store.users.find(u=>u.id===currentUser.id)?.suspended === true;
+  // Unread messages count
+  const getUnread = () => {
+    let pairs = [];
+    if (currentUser.role === "alumno") pairs = [currentUser.coachId];
+    else if (currentUser.role === "coach") pairs = store.users.filter(u=>u.role==="alumno"&&u.coachId===currentUser.id&&u.active).map(u=>u.id);
+    else if (currentUser.role === "superadmin") pairs = store.users.filter(u=>u.role==="coach"&&u.active).map(u=>u.id);
+    const getKey = (a,b) => [a,b].sort().join("-");
+    return pairs.reduce((total, pid) => {
+      const key = getKey(currentUser.id, pid);
+      const msgs = store.messages[key] || [];
+      return total + msgs.filter(m => m.from === pid && !m.read).length;
+    }, 0);
+  };
+  const unreadCount = getUnread();
+
   const navItems = isAlumno
     ? isSuspended
       ? [
-          { id:"messages", icon:"💬", label:"Mensajes" },
+          { id:"messages", icon:"💬", label:"Mensajes", badge: unreadCount },
           { id:"config",   icon:"⚙️", label:"Config" },
         ]
       : [
@@ -1883,7 +2722,8 @@ function AppShell({ currentUser: initUser, onLogout }) {
           { id:"training",  icon:"🏋️", label:"Entreno" },
           { id:"progress",  icon:"📈", label:"Progreso" },
           { id:"routines",  icon:"📋", label:"Rutinas" },
-          { id:"messages",  icon:"💬", label:"Mensajes" },
+          { id:"metrics",   icon:"📊", label:"Métricas" },
+          { id:"messages",  icon:"💬", label:"Mensajes", badge: unreadCount },
           { id:"config",    icon:"⚙️", label:"Config" },
         ]
     : isCoach
@@ -1898,7 +2738,7 @@ function AppShell({ currentUser: initUser, onLogout }) {
         { id:"overview",  icon:"📊", label:"Resumen" },
         { id:"users",     icon:"👥", label:"Usuarios" },
         { id:"routines",  icon:"📋", label:"Rutinas" },
-        { id:"messages",  icon:"💬", label:"Mensajes" },
+        { id:"messages",  icon:"💬", label:"Mensajes", badge: unreadCount },
         { id:"config",    icon:"⚙️", label:"Config" },
       ];
 
@@ -1942,7 +2782,9 @@ function AppShell({ currentUser: initUser, onLogout }) {
               color: page===n.id ? "var(--accent)" : "var(--sub)",
               fontSize:14, fontWeight: page===n.id ? 600 : 400,
             }}>
-              <span style={{ width:22, textAlign:"center" }}>{n.icon}</span>{n.label}
+              <span style={{ width:22, textAlign:"center" }}>{n.icon}</span>
+              {n.label}
+              {n.badge > 0 && <span style={{ marginLeft:"auto", background:"var(--accent)", color:"#fff", borderRadius:99, fontSize:10, fontWeight:700, padding:"1px 7px", minWidth:18, textAlign:"center" }}>{n.badge}</span>}
             </button>
           ))}
         </nav>
@@ -1966,9 +2808,14 @@ function AppShell({ currentUser: initUser, onLogout }) {
         {/* PAGE CONTENT */}
         <div style={{ flex:1, overflowY:"auto", padding:16 }}>
 
-          {page === "inicio"   && <InicioModule   currentUser={currentUser} onNavigate={navigate}/>}
+          {page === "inicio" && (
+            isAlumno ? <InicioModule currentUser={currentUser} onNavigate={navigate}/> :
+            isCoach  ? <CoachDashboard currentUser={currentUser} onNavigate={navigate}/> :
+            isSA     ? <SADashboard/> : null
+          )}
           {page === "training" && <TrainingModule currentUser={currentUser}/>}
           {page === "progress" && <ProgressModule currentUser={currentUser} targetAlumnoId={targetAlumno}/>}
+          {page === "metrics"  && isAlumno && <MetricsModule currentUser={currentUser}/>}
           {page === "routines" && <RoutinesModule currentUser={currentUser} targetAlumnoId={targetAlumno}/>}
           {page === "users"    && <UsersModule    currentUser={currentUser}/>}
           {page === "overview" && <OverviewModule currentUser={currentUser} onNavigate={navigate}/>}
@@ -1997,9 +2844,10 @@ function AppShell({ currentUser: initUser, onLogout }) {
             <button key={n.id} onClick={()=>navigate(n.id)} style={{
               flex:1, background:"transparent", border:"none", padding:"7px 4px",
               color:page===n.id?"var(--accent)":"var(--muted)",
-              display:"flex", flexDirection:"column", alignItems:"center", gap:2
+              display:"flex", flexDirection:"column", alignItems:"center", gap:2, position:"relative"
             }}>
               <span style={{ fontSize:17 }}>{n.icon}</span>
+              {n.badge > 0 && <span style={{ position:"absolute", top:2, right:"calc(50% - 16px)", background:"var(--accent)", color:"#fff", borderRadius:99, fontSize:9, fontWeight:700, padding:"1px 5px", minWidth:16, textAlign:"center" }}>{n.badge}</span>}
               <span style={{ fontSize:9, fontWeight:600 }}>{n.label}</span>
             </button>
           ))}
