@@ -1,6 +1,6 @@
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// FUERZA INTELIGENTE V5 — Arquitectura Modular
+// FUERZA INTELIGENTE V6 — Arquitectura Modular
 // ═══════════════════════════════════════════════════════════════════════════════
 //
 //  MÓDULOS (cada bloque es independiente):
@@ -77,6 +77,11 @@ function buildSchedule(startDate, trainingDays, totalSessions) {
 // ───────────────────────────────────────────────────────────────────────────────
 const AppContext = createContext(null);
 const useStore = () => useContext(AppContext);
+const useLang = (user) => {
+  const code = LANG_CODES[user?.lang] || "es";
+  return (key) => T[code]?.[key] || T.es[key] || key;
+};
+const useUnits = (user) => user?.units || "kg";
 
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -124,11 +129,11 @@ const INITIAL_STORE = {
   // Usuarios: superadmin → coach → alumno
   users: [
     { id:"sa1", role:"superadmin", name:"Admin Master", email:"admin@fi.com",  password:"admin123", gender:null,     coachId:null,  active:true, photo:null, phone:"", birthdate:"" },
-    { id:"c1", suspended:false, suspendedAt:null, role:"coach", name:"Martín López", email:"martin@fi.com", password:"1234", gender:null, coachId:"sa1", active:true, photo:null, phone:"+54 11 1234-5678", birthdate:"1988-03-15", alumnoLimit:null, expiresAt:null },
-    { id:"c2", suspended:false, suspendedAt:null, role:"coach", name:"Sofía Ruiz", email:"sofia@fi.com", password:"1234", gender:"female", coachId:"sa1", active:true, photo:null, phone:"+54 11 9876-5432", birthdate:"1992-07-22", alumnoLimit:20, expiresAt:null },
-    { id:"a1", suspended:false, suspendedAt:null,  role:"alumno",    name:"Juan Pérez",   email:"juan@fi.com",   password:"1234",     gender:"male",   coachId:"c1",  active:true, photo:null, phone:"+54 11 5555-1234", birthdate:"1995-11-08", objectives:[{id:"fuerza_max",priority:"principal",completed:false},{id:"hipertrofia",priority:"secundario",completed:false},{id:"core",priority:"secundario",completed:false}] },
-    { id:"a2", suspended:false, suspendedAt:null,  role:"alumno",    name:"Laura García", email:"laura@fi.com",  password:"1234",     gender:"female", coachId:"c1",  active:true, photo:null, phone:"+54 11 4444-9999", birthdate:"1998-02-14", objectives:[{id:"desc_grasa",priority:"principal",completed:false},{id:"hipertrofia",priority:"secundario",completed:false}] },
-    { id:"a3", suspended:false, suspendedAt:null,  role:"alumno",    name:"Diego Torres", email:"diego@fi.com",  password:"1234",     gender:"male",   coachId:"c2",  active:true, photo:null, phone:"", birthdate:"1993-06-30", objectives:[] },
+    { id:"c1", suspended:false, suspendedAt:null, role:"coach", name:"Martín López", email:"martin@fi.com", password:"1234", gender:null, coachId:"sa1", active:true, photo:null, phone:"+54 11 1234-5678", birthdate:"1988-03-15", alumnoLimit:null, expiresAt:null, lang:"es", units:"kg" },
+    { id:"c2", suspended:false, suspendedAt:null, role:"coach", name:"Sofía Ruiz", email:"sofia@fi.com", password:"1234", gender:"female", coachId:"sa1", active:true, photo:null, phone:"+54 11 9876-5432", birthdate:"1992-07-22", alumnoLimit:20, expiresAt:null, lang:"es", units:"kg" },
+    { id:"a1", suspended:false, suspendedAt:null, role:"alumno", name:"Juan Pérez", email:"juan@fi.com", password:"1234", gender:"male", coachId:"c1", active:true, photo:null, phone:"+54 11 5555-1234", birthdate:"1995-11-08", objectives:[{id:"fuerza_max",priority:"principal",completed:false},{id:"hipertrofia",priority:"secundario",completed:false},{id:"core",priority:"secundario",completed:false}], pesoInicial:82, pesoObj:88, altura:178, lang:"es", units:"kg", registeredAt:"2024-11-08" },
+    { id:"a2", suspended:false, suspendedAt:null, role:"alumno", name:"Laura García", email:"laura@fi.com", password:"1234", gender:"female", coachId:"c1", active:true, photo:null, phone:"+54 11 4444-9999", birthdate:"1998-02-14", objectives:[{id:"desc_grasa",priority:"principal",completed:false},{id:"hipertrofia",priority:"secundario",completed:false}], pesoInicial:65, pesoObj:58, altura:163, lang:"es", units:"kg", registeredAt:"2024-02-14" },
+    { id:"a3", suspended:false, suspendedAt:null, role:"alumno", name:"Diego Torres", email:"diego@fi.com", password:"1234", gender:"male", coachId:"c2", active:true, photo:null, phone:"", birthdate:"1993-06-30", objectives:[], pesoInicial:null, pesoObj:null, altura:null, lang:"es", units:"kg", registeredAt:"2024-06-30" },
   ],
   // Rutinas por alumno
   routines: {
@@ -185,6 +190,20 @@ const INITIAL_STORE = {
       { id:"m3", from:"c1", to:"a2", text:"Laura, foco en técnica del hip thrust esta semana.", ts:"09:15" },
     ],
     "c2-a3": [],
+  },
+  // Repositorio de rutinas por entrenador (coachId → [routine templates])
+  repository: {
+    c1: [
+      { id:"repo1", coachId:"c1", label:"Pierna Fuerza A", duracion:"75-90 min", exercises:[
+        {id:"re1",name:"Sentadilla trasera",sets:5,reps:5,pct:"85%",peso:"",descanso:"2-3 min",instruccion:"Baja controlada"},
+        {id:"re2",name:"Peso muerto rumano",sets:4,reps:6,pct:"75%",peso:"",descanso:"2 min",instruccion:""},
+      ]},
+      { id:"repo2", coachId:"c1", label:"Tirón B", duracion:"60-75 min", exercises:[
+        {id:"re3",name:"Dominadas lastradas",sets:4,reps:6,pct:"—",peso:"",descanso:"2 min",instruccion:""},
+        {id:"re4",name:"Remo con barra",sets:4,reps:8,pct:"70%",peso:"",descanso:"90 seg",instruccion:""},
+      ]},
+    ],
+    c2: [],
   },
   // Métricas de seguimiento por objetivo (M11)
   // Structure: { alumnoId: { objId: [{date, fields...}] } }
@@ -362,6 +381,9 @@ function StoreProvider({ children }) {
           return { ...prev, messages: { ...prev.messages, [key]: [...(prev.messages[key]||[]), payload.msg] } };
         }
         // ── PROGRESS ──
+        case "ADD_REPO_ROUTINE": return { ...prev, repository: { ...prev.repository, [payload.coachId]: [...(prev.repository[payload.coachId]||[]), payload] } };
+        case "UPDATE_REPO_ROUTINE": return { ...prev, repository: { ...prev.repository, [payload.coachId]: (prev.repository[payload.coachId]||[]).map(r=>r.id===payload.id?{...r,...payload}:r) } };
+        case "DELETE_REPO_ROUTINE": return { ...prev, repository: { ...prev.repository, [payload.coachId]: (prev.repository[payload.coachId]||[]).filter(r=>r.id!==payload.id) } };
         case "ADD_METRIC": {
           // payload: { alumnoId, objId, entry: {date, ...fields} }
           const { alumnoId, objId, entry } = payload;
@@ -392,6 +414,116 @@ function StoreProvider({ children }) {
 
 // ───────────────────────────────────────────────────────────────────────────────
 // THEMES
+
+// ───────────────────────────────────────────────────────────────────────────────
+// [I18N] TRANSLATIONS
+// ───────────────────────────────────────────────────────────────────────────────
+const T = {
+  es: {
+    lang:"Español", inicio:"Inicio", entreno:"Entreno", progreso:"Progreso",
+    metricas:"Métricas", rutinas:"Rutinas", mensajes:"Mensajes", config:"Config",
+    resumen:"Resumen", alumnos:"Alumnos", usuarios:"Usuarios", overview:"Resumen",
+    cerrarSesion:"Cerrar sesión", guardar:"Guardar cambios", perfil:"Perfil",
+    seguridad:"Seguridad", nombre:"Nombre completo", email:"Email",
+    celular:"Número de celular", nacimiento:"Fecha de nacimiento",
+    idioma:"Idioma", unidades:"Unidades de peso", rol:"Rol",
+    pesoInicial:"Peso inicial", altura:"Altura", pesoObj:"Peso objetivo (opcional)",
+    imc:"IMC calculado", hoy:"Hola", descanso:"¡Día de descanso!",
+    sinRutinas:"Sin rutinas asignadas aún", nuevaRutina:"Nueva rutina",
+    importar:"Importar", guardarEnt:"Guardar entrenamiento 💾",
+    guardado:"✓ ¡Guardado con éxito!", registrarMetricas:"Registrar métricas",
+    progresoReciente:"Progreso reciente", objetivosCiclo:"Objetivos del ciclo",
+    entrenamientoHoy:"Entrenamiento de hoy", empezar:"Empezar 🔥",
+    repositorio:"Repositorio", asignarAlumno:"Asignar a alumno",
+    copiarPersonalizar:"Copiar y personalizar", asignarOriginal:"Asignar original",
+    diasEntrenamiento:"Días de entrenamiento", frecuenciaSemanal:"Frecuencia semanal",
+    puntoPartida:"Punto de partida", kg:"kg", lbs:"lbs",
+  },
+  en: {
+    lang:"English", inicio:"Home", entreno:"Training", progreso:"Progress",
+    metricas:"Metrics", rutinas:"Routines", mensajes:"Messages", config:"Settings",
+    resumen:"Overview", alumnos:"Students", usuarios:"Users", overview:"Overview",
+    cerrarSesion:"Sign out", guardar:"Save changes", perfil:"Profile",
+    seguridad:"Security", nombre:"Full name", email:"Email",
+    celular:"Phone number", nacimiento:"Date of birth",
+    idioma:"Language", unidades:"Weight units", rol:"Role",
+    pesoInicial:"Initial weight", altura:"Height", pesoObj:"Target weight (optional)",
+    imc:"Calculated BMI", hoy:"Hello", descanso:"Rest day!",
+    sinRutinas:"No routines assigned yet", nuevaRutina:"New routine",
+    importar:"Import", guardarEnt:"Save training 💾",
+    guardado:"✓ Saved successfully!", registrarMetricas:"Log metrics",
+    progresoReciente:"Recent progress", objetivosCiclo:"Cycle objectives",
+    entrenamientoHoy:"Today's training", empezar:"Start 🔥",
+    repositorio:"Repository", asignarAlumno:"Assign to student",
+    copiarPersonalizar:"Copy & customize", asignarOriginal:"Assign original",
+    diasEntrenamiento:"Training days", frecuenciaSemanal:"Weekly frequency",
+    puntoPartida:"Starting point", kg:"kg", lbs:"lbs",
+  },
+  pt: {
+    lang:"Português", inicio:"Início", entreno:"Treino", progreso:"Progresso",
+    metricas:"Métricas", rutinas:"Rotinas", mensajes:"Mensagens", config:"Config",
+    resumen:"Resumo", alumnos:"Alunos", usuarios:"Usuários", overview:"Resumo",
+    cerrarSesion:"Sair", guardar:"Salvar alterações", perfil:"Perfil",
+    seguridad:"Segurança", nombre:"Nome completo", email:"E-mail",
+    celular:"Número de celular", nacimiento:"Data de nascimento",
+    idioma:"Idioma", unidades:"Unidades de peso", rol:"Função",
+    pesoInicial:"Peso inicial", altura:"Altura", pesoObj:"Peso alvo (opcional)",
+    imc:"IMC calculado", hoy:"Olá", descanso:"Dia de descanso!",
+    sinRutinas:"Sem rotinas atribuídas", nuevaRutina:"Nova rotina",
+    importar:"Importar", guardarEnt:"Salvar treino 💾",
+    guardado:"✓ Salvo com sucesso!", registrarMetricas:"Registrar métricas",
+    progresoReciente:"Progresso recente", objetivosCiclo:"Objetivos do ciclo",
+    entrenamientoHoy:"Treino de hoje", empezar:"Começar 🔥",
+    repositorio:"Repositório", asignarAlumno:"Atribuir a aluno",
+    copiarPersonalizar:"Copiar e personalizar", asignarOriginal:"Atribuir original",
+    diasEntrenamiento:"Dias de treino", frecuenciaSemanal:"Frequência semanal",
+    puntoPartida:"Ponto de partida", kg:"kg", lbs:"lbs",
+  },
+  ru: {
+    lang:"Русский", inicio:"Главная", entreno:"Тренировка", progreso:"Прогресс",
+    metricas:"Метрики", rutinas:"Программы", mensajes:"Сообщения", config:"Настройки",
+    resumen:"Обзор", alumnos:"Ученики", usuarios:"Пользователи", overview:"Обзор",
+    cerrarSesion:"Выйти", guardar:"Сохранить", perfil:"Профиль",
+    seguridad:"Безопасность", nombre:"Полное имя", email:"Эл. почта",
+    celular:"Номер телефона", nacimiento:"Дата рождения",
+    idioma:"Язык", unidades:"Единицы веса", rol:"Роль",
+    pesoInicial:"Начальный вес", altura:"Рост", pesoObj:"Целевой вес (необяз.)",
+    imc:"Рассчитанный ИМТ", hoy:"Привет", descanso:"День отдыха!",
+    sinRutinas:"Программы не назначены", nuevaRutina:"Новая программа",
+    importar:"Импорт", guardarEnt:"Сохранить тренировку 💾",
+    guardado:"✓ Сохранено!", registrarMetricas:"Записать метрики",
+    progresoReciente:"Недавний прогресс", objetivosCiclo:"Цели цикла",
+    entrenamientoHoy:"Тренировка сегодня", empezar:"Начать 🔥",
+    repositorio:"Репозиторий", asignarAlumno:"Назначить ученику",
+    copiarPersonalizar:"Копировать и изменить", asignarOriginal:"Назначить оригинал",
+    diasEntrenamiento:"Дни тренировок", frecuenciaSemanal:"Частота в неделю",
+    puntoPartida:"Отправная точка", kg:"кг", lbs:"фунты",
+  },
+};
+const LANG_CODES = { "Español":"es", "English":"en", "Português":"pt", "Русский":"ru" };
+
+// Weight conversion helpers
+const toDisplay = (kg, unit) => unit==="lbs" ? +(kg*2.20462).toFixed(1) : +kg;
+const toKg      = (val, unit) => unit==="lbs" ? +(val/2.20462).toFixed(2) : +val;
+const fmtWeight = (kg, unit) => `${toDisplay(kg,unit)} ${unit}`;
+
+// BMI calculator
+const calcBMI = (weightKg, heightCm) => {
+  if (!weightKg || !heightCm) return null;
+  const bmi = weightKg / Math.pow(heightCm/100, 2);
+  return +bmi.toFixed(1);
+};
+const bmiCategory = (bmi, lang="es") => {
+  if (!bmi) return "";
+  const cats = {
+    es: bmi<18.5?"Bajo peso":bmi<25?"Normal":bmi<30?"Sobrepeso":"Obesidad",
+    en: bmi<18.5?"Underweight":bmi<25?"Normal":bmi<30?"Overweight":"Obese",
+    pt: bmi<18.5?"Abaixo do peso":bmi<25?"Normal":bmi<30?"Sobrepeso":"Obesidade",
+    ru: bmi<18.5?"Недостаток веса":bmi<25?"Норма":bmi<30?"Избыток веса":"Ожирение",
+  };
+  return cats[lang]||cats.es;
+};
+
 // ───────────────────────────────────────────────────────────────────────────────
 const THEMES = {
   superadmin: { accent:"#f59e0b", accent2:"#fbbf24", dim:"#f59e0b22" },
@@ -728,7 +860,7 @@ function UsersModule({ currentUser }) {
   const theme = getTheme(currentUser);
   const [modal, setModal] = useState(null); // null | "add" | "edit"
   const [editing, setEditing]   = useState(null);
-  const [form, setForm]   = useState({ name:"", email:"", password:"1234", role:"alumno", gender:"male", coachId:"", alumnoLimit:null, expiresAt:null, expiresInDays:"" });
+  const [form, setForm]   = useState({ name:"", email:"", password:"1234", role:"alumno", gender:"male", coachId:"", alumnoLimit:null, expiresAt:null, expiresInDays:"", pesoInicial:"", pesoObj:"", altura:"", lang:"es", units:"kg" });
   const [filter, setFilter] = useState("all");
 
   // SuperAdmin ve todos; coach ve solo sus alumnos
@@ -742,7 +874,7 @@ function UsersModule({ currentUser }) {
   const coaches = store.users.filter(u => u.role==="coach" && u.active);
 
   const openAdd = () => {
-    setForm({ name:"", email:"", password:"1234", role: currentUser.role==="coach"?"alumno":"coach", gender:"male", coachId: currentUser.role==="coach"?currentUser.id:"", alumnoLimit:null, expiresAt:null, expiresInDays:"" });
+    setForm({ name:"", email:"", password:"1234", role: currentUser.role==="coach"?"alumno":"coach", gender:"male", coachId: currentUser.role==="coach"?currentUser.id:"", alumnoLimit:null, expiresAt:null, expiresInDays:"", pesoInicial:"", pesoObj:"", altura:"", lang:"es", units:"kg" });
     setModal("add");
   };
   const openEdit = (u) => { setEditing(u); setForm({...u}); setModal("edit"); };
@@ -932,12 +1064,41 @@ function UsersModule({ currentUser }) {
                 </div>
               </>
             )}
-            {/* Objectives selector — only for alumnos */}
+            {/* Starting point — only for alumnos */}
             {form.role === "alumno" && (
-              <ObjectivesSelector
-                value={form.objectives||[]}
-                onChange={v=>setForm(p=>({...p,objectives:v}))}
-              />
+              <>
+                <Divider/>
+                <div style={{ fontSize:12, fontWeight:700, color:"var(--accent)", marginBottom:8 }}>📍 PUNTO DE PARTIDA</div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                  <div>
+                    <Label>PESO INICIAL (kg)</Label>
+                    <input type="number" step="0.1" placeholder="Ej: 75.5" value={form.pesoInicial||""} onChange={e=>setForm(p=>({...p,pesoInicial:e.target.value}))}/>
+                  </div>
+                  <div>
+                    <Label>ALTURA (cm)</Label>
+                    <input type="number" placeholder="Ej: 175" value={form.altura||""} onChange={e=>setForm(p=>({...p,altura:e.target.value}))}/>
+                  </div>
+                </div>
+                <div>
+                  <Label>PESO OBJETIVO (kg) — opcional</Label>
+                  <input type="number" step="0.1" placeholder="Ej: 80" value={form.pesoObj||""} onChange={e=>setForm(p=>({...p,pesoObj:e.target.value}))}/>
+                </div>
+                {form.pesoInicial && form.altura && (() => {
+                  const bmi = calcBMI(parseFloat(form.pesoInicial), parseFloat(form.altura));
+                  return bmi ? (
+                    <div style={{ background:"var(--surface)", borderRadius:8, padding:"8px 12px", fontSize:12 }}>
+                      <span style={{ color:"var(--sub)" }}>IMC calculado: </span>
+                      <span style={{ fontWeight:700, color:"var(--accent)" }}>{bmi}</span>
+                      <span style={{ color:"var(--sub)", marginLeft:6 }}>({bmiCategory(bmi)})</span>
+                    </div>
+                  ) : null;
+                })()}
+                <Divider/>
+                <ObjectivesSelector
+                  value={form.objectives||[]}
+                  onChange={v=>setForm(p=>({...p,objectives:v}))}
+                />
+              </>
             )}
             <Divider/>
             <div style={{ display:"flex", gap:8 }}>
@@ -1368,126 +1529,348 @@ function ImportModule({ alumnoId, onImport, onClose }) {
 // ───────────────────────────────────────────────────────────────────────────────
 function RoutinesModule({ currentUser, targetAlumnoId }) {
   const { store, dispatch } = useStore();
-  const alumnoId = targetAlumnoId || currentUser.id;
-  const myRoutines = store.routines[alumnoId] || [];
-  const [modal, setModal] = useState(null); // null | "add" | "import"
-  const [form, setForm]   = useState({ label:"", duracion:"60–75 min", semana:1, exercises:[] });
-  const canEdit = currentUser.role !== "alumno";
+  const t = useLang(currentUser);
+  const isCoach  = currentUser.role === "coach";
+  const isAlumno = currentUser.role === "alumno";
+  const alumnoId = targetAlumnoId || (isAlumno ? currentUser.id : null);
 
-  const addEx = () => setForm(p=>({...p, exercises:[...p.exercises,{id:"ne"+Date.now(), name:"", sets:3, reps:8, pct:"—", peso:"", descanso:"90 seg", instruccion:""}]}));
-  const updEx = (i,k,v) => setForm(p=>{const ex=[...p.exercises]; ex[i]={...ex[i],[k]:v}; return {...p,exercises:ex};});
-  const remEx = (i) => setForm(p=>({...p, exercises:p.exercises.filter((_,j)=>j!==i)}));
+  // Tab: "repo" (coach managing their library) | "alumno" (viewing/editing assigned)
+  const [tab, setTab] = useState(alumnoId && !targetAlumnoId ? "alumno" : isCoach ? "repo" : "alumno");
 
-  const saveRoutine = () => {
-    if (!form.label || !form.exercises.length) return;
-    if (modal === "edit") {
-      dispatch("UPDATE_ROUTINE", { ...form, alumnoId });
+  // ── REPOSITORY state ──────────────────────────────────────────────────────
+  const coachId   = isCoach ? currentUser.id : store.users.find(u=>u.id===alumnoId)?.coachId;
+  const repoItems = store.repository?.[coachId] || [];
+  const [repoModal, setRepoModal] = useState(null); // null | "add" | "edit" | "import"
+  const [repoForm, setRepoForm]   = useState({ label:"", duracion:"60–75 min", exercises:[] });
+  const [editingRepoId, setEditingRepoId] = useState(null);
+
+  // ── ASSIGN state ──────────────────────────────────────────────────────────
+  const [assignModal, setAssignModal]   = useState(null); // null | routineId
+  const [assignAlumnoId, setAssignAlumnoId] = useState(alumnoId||"");
+  const [assignMode, setAssignMode]     = useState("copy"); // "copy" | "original"
+  const [assignDays, setAssignDays]     = useState([1,3,5]);
+  const [assignStart, setAssignStart]   = useState(() => new Date().toISOString().split("T")[0]);
+
+  // ── ALUMNO ROUTINES state ─────────────────────────────────────────────────
+  const myRoutines = alumnoId ? (store.routines[alumnoId] || []) : [];
+  const [editModal, setEditModal] = useState(null);
+  const [editForm, setEditForm]   = useState({ label:"", duracion:"60–75 min", semana:1, exercises:[] });
+
+  const canEdit = !isAlumno;
+  const alumnos = store.users.filter(u=>u.role==="alumno"&&u.coachId===currentUser.id&&u.active);
+
+  // ── REPO helpers ──────────────────────────────────────────────────────────
+  const addRepoEx  = () => setRepoForm(p=>({...p,exercises:[...p.exercises,{id:"re"+Date.now(),name:"",sets:3,reps:8,pct:"—",peso:"",descanso:"90 seg",instruccion:""}]}));
+  const updRepoEx  = (i,k,v) => setRepoForm(p=>{const ex=[...p.exercises];ex[i]={...ex[i],[k]:v};return {...p,exercises:ex};});
+  const remRepoEx  = (i) => setRepoForm(p=>({...p,exercises:p.exercises.filter((_,j)=>j!==i)}));
+
+  const saveRepo = () => {
+    if (!repoForm.label) return;
+    if (repoModal==="edit") {
+      dispatch("UPDATE_REPO_ROUTINE", {...repoForm, id:editingRepoId, coachId});
     } else {
-      const r = { ...form, id:"r"+Date.now(), alumnoId, status:"upcoming", logs:Object.fromEntries(form.exercises.map(e=>[e.id,[]])) };
-      dispatch("ADD_ROUTINE", r);
+      dispatch("ADD_REPO_ROUTINE", {...repoForm, id:"repo"+Date.now(), coachId});
     }
-    setModal(null);
-    setForm({ label:"", duracion:"60–75 min", semana:1, exercises:[] });
+    setRepoModal(null);
+    setRepoForm({label:"",duracion:"60–75 min",exercises:[]});
   };
 
-  const handleImport = (r) => { dispatch("ADD_ROUTINE", r); };
+  // ── ASSIGN helpers ────────────────────────────────────────────────────────
+  const DOW_LABELS = [{v:1,l:"Lun"},{v:2,l:"Mar"},{v:3,l:"Mié"},{v:4,l:"Jue"},{v:5,l:"Vie"},{v:6,l:"Sáb"},{v:0,l:"Dom"}];
+  const toggleAssignDay = d => setAssignDays(p=>p.includes(d)?p.filter(x=>x!==d):[...p,d].sort());
 
-  const alumnoName = store.users.find(u=>u.id===alumnoId)?.name || "";
+  const confirmAssign = () => {
+    const routine = repoItems.find(r=>r.id===assignModal);
+    if (!routine || !assignAlumnoId) return;
+    const sched = buildSchedule(assignStart, assignDays, 1);
+    const scheduledDate = sched[0] || null;
+    const exercises = routine.exercises.map(e=>({...e, id:"a"+Date.now()+Math.random().toString(36).slice(2)}));
+    const newR = {
+      id: "r"+Date.now(),
+      alumnoId: assignAlumnoId,
+      semana: 1,
+      label: routine.label,
+      duracion: routine.duracion,
+      status: "upcoming",
+      scheduledDate,
+      fromRepo: assignMode==="original" ? routine.id : null,
+      exercises: assignMode==="copy" ? exercises : routine.exercises,
+      logs: Object.fromEntries((assignMode==="copy"?exercises:routine.exercises).map(e=>[e.id,[]])),
+    };
+    dispatch("ADD_ROUTINE", newR);
+    setAssignModal(null);
+  };
+
+  // ── ALUMNO ROUTINE edit ───────────────────────────────────────────────────
+  const addEditEx  = () => setEditForm(p=>({...p,exercises:[...p.exercises,{id:"e"+Date.now(),name:"",sets:3,reps:8,pct:"—",peso:"",descanso:"90 seg",instruccion:""}]}));
+  const updEditEx  = (i,k,v) => setEditForm(p=>{const ex=[...p.exercises];ex[i]={...ex[i],[k]:v};return {...p,exercises:ex};});
+  const remEditEx  = (i) => setEditForm(p=>({...p,exercises:p.exercises.filter((_,j)=>j!==i)}));
+
+  const saveEdit = () => {
+    if (!editForm.label) return;
+    dispatch("UPDATE_ROUTINE", {...editForm, alumnoId});
+    setEditModal(null);
+  };
+
+  const alumnoName = store.users.find(u=>u.id===alumnoId)?.name||"";
 
   return (
     <div className="fade">
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
         <div>
-          <H size={20}>Rutinas</H>
-          {targetAlumnoId && <div style={{ fontSize:12, color:"var(--sub)", marginTop:2 }}>→ {alumnoName}</div>}
+          <H size={20}>{t("rutinas")}</H>
+          {alumnoId && <div style={{ fontSize:12, color:"var(--sub)", marginTop:2 }}>→ {alumnoName}</div>}
         </div>
-        {canEdit && (
-          <div style={{ display:"flex", gap:6 }}>
-            <Btn onClick={()=>setModal("import")} v="ghost" style={{ fontSize:12, padding:"6px 12px" }}>📤 Importar</Btn>
-            <Btn onClick={()=>setModal("add")} v="sm">+ Nueva</Btn>
-          </div>
-        )}
       </div>
 
-      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-        {myRoutines.map(r => (
-          <Card key={r.id}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
-              <div>
-                <H size={14}>{r.label}</H>
-                <div style={{ fontSize:12, color:"var(--sub)", marginTop:2 }}>⏱ {r.duracion} · {r.exercises.length} ejercicios</div>
-                {r.scheduledDate && <div style={{ fontSize:11, color:"var(--accent)", marginTop:2 }}>📅 {new Date(r.scheduledDate+"T12:00:00").toLocaleDateString("es",{weekday:"short",day:"numeric",month:"short"})}</div>}
-              </div>
-              <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:5 }}>
-                <Pill label={sl(r.status)} color={sc(r.status)}/>
-                {canEdit && (
+      {/* Tabs: Repositorio | Asignadas */}
+      {isCoach && (
+        <div style={{ display:"flex", gap:6, marginBottom:14 }}>
+          {[
+            { id:"repo",   label:`📦 ${t("repositorio")}` },
+            { id:"alumno", label:`👤 ${alumnoId?alumnoName:"Asignadas"}` },
+          ].map(tb=>(
+            <button key={tb.id} onClick={()=>setTab(tb.id)} style={{
+              flex:1, background:tab===tb.id?"var(--accent)":"var(--card)",
+              border:`1px solid ${tab===tb.id?"var(--accent)":"var(--border)"}`,
+              color:tab===tb.id?"#fff":"var(--sub)", borderRadius:9, padding:"8px", fontSize:12, fontWeight:600,
+            }}>{tb.label}</button>
+          ))}
+        </div>
+      )}
+
+      {/* ── TAB: REPOSITORIO ── */}
+      {tab==="repo" && isCoach && (
+        <>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+            <div style={{ fontSize:12, color:"var(--sub)" }}>{repoItems.length} rutinas en el repositorio</div>
+            <div style={{ display:"flex", gap:6 }}>
+              <Btn onClick={()=>setRepoModal("import")} v="ghost" style={{ fontSize:12, padding:"6px 12px" }}>📤 Importar</Btn>
+              <Btn onClick={()=>{setRepoModal("add");setRepoForm({label:"",duracion:"60–75 min",exercises:[]});}} v="sm">+ Nueva</Btn>
+            </div>
+          </div>
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            {repoItems.map(r=>(
+              <Card key={r.id}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
+                  <div>
+                    <H size={14}>{r.label}</H>
+                    <div style={{ fontSize:12, color:"var(--sub)", marginTop:2 }}>⏱ {r.duracion} · {r.exercises.length} ejercicios</div>
+                  </div>
                   <div style={{ display:"flex", gap:4 }}>
-                    <Btn onClick={()=>{ setModal("edit"); setForm({...r, exercises:[...r.exercises]}); }} v="ghost" style={{ padding:"3px 10px", fontSize:11 }}>✏️</Btn>
-                    <Btn onClick={()=>dispatch("DELETE_ROUTINE",{id:r.id,alumnoId})} v="danger" style={{ padding:"3px 10px", fontSize:11 }}>🗑</Btn>
+                    <Btn onClick={()=>{setAssignModal(r.id);setAssignAlumnoId(alumnoId||"");}} v="sm" style={{ fontSize:11, padding:"4px 10px" }}>→ Asignar</Btn>
+                    <Btn onClick={()=>{setRepoModal("edit");setEditingRepoId(r.id);setRepoForm({...r,exercises:[...r.exercises]});}} v="ghost" style={{ padding:"4px 10px", fontSize:11 }}>✏️</Btn>
+                    <Btn onClick={()=>dispatch("DELETE_REPO_ROUTINE",{id:r.id,coachId})} v="danger" style={{ padding:"4px 10px", fontSize:11 }}>🗑</Btn>
+                  </div>
+                </div>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
+                  {r.exercises.map((e,i)=><Tag key={i}>{e.name}</Tag>)}
+                </div>
+              </Card>
+            ))}
+            {repoItems.length===0 && (
+              <div style={{ textAlign:"center", color:"var(--sub)", padding:32, background:"var(--card)", borderRadius:12, border:"1px dashed var(--border)" }}>
+                <div style={{ fontSize:32, marginBottom:8 }}>📦</div>
+                <div>El repositorio está vacío</div>
+                <div style={{ fontSize:12, marginTop:4 }}>Creá o importá rutinas para luego asignarlas a tus alumnos</div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ── TAB: ASIGNADAS AL ALUMNO ── */}
+      {tab==="alumno" && (
+        <>
+          {canEdit && !alumnoId && (
+            <div style={{ marginBottom:10 }}>
+              <Label>SELECCIONAR ALUMNO</Label>
+              <select value={assignAlumnoId} onChange={e=>setAssignAlumnoId(e.target.value)}>
+                <option value="">— Elegir alumno —</option>
+                {alumnos.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
+          )}
+          {(() => {
+            const aid = alumnoId || assignAlumnoId;
+            const routines = aid ? (store.routines[aid]||[]) : [];
+            return (
+              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                {routines.map(r=>(
+                  <Card key={r.id}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
+                      <div>
+                        <H size={14}>{r.label}</H>
+                        <div style={{ fontSize:12, color:"var(--sub)", marginTop:2 }}>⏱ {r.duracion} · {r.exercises.length} ejercicios</div>
+                        {r.scheduledDate && <div style={{ fontSize:11, color:"var(--accent)", marginTop:2 }}>📅 {new Date(r.scheduledDate+"T12:00:00").toLocaleDateString("es",{weekday:"short",day:"numeric",month:"short"})}</div>}
+                        {r.fromRepo && <div style={{ fontSize:10, color:"var(--muted)", marginTop:1 }}>📦 Del repositorio (copia independiente)</div>}
+                      </div>
+                      <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:5 }}>
+                        <Pill label={sl(r.status)} color={sc(r.status)}/>
+                        {canEdit && (
+                          <div style={{ display:"flex", gap:4 }}>
+                            <Btn onClick={()=>{setEditModal(r.id);setEditForm({...r,exercises:[...r.exercises]});}} v="ghost" style={{ padding:"3px 10px", fontSize:11 }}>✏️</Btn>
+                            <Btn onClick={()=>dispatch("DELETE_ROUTINE",{id:r.id,alumnoId:aid})} v="danger" style={{ padding:"3px 10px", fontSize:11 }}>🗑</Btn>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
+                      {r.exercises.map((e,i)=><Tag key={i}>{e.name}</Tag>)}
+                    </div>
+                  </Card>
+                ))}
+                {routines.length===0 && (
+                  <div style={{ textAlign:"center", color:"var(--sub)", padding:32, background:"var(--card)", borderRadius:12, border:"1px dashed var(--border)" }}>
+                    <div style={{ fontSize:32, marginBottom:8 }}>📋</div>
+                    <div>No hay rutinas asignadas</div>
+                    {canEdit && <div style={{ fontSize:12, marginTop:4 }}>Andá al Repositorio y asignale una rutina</div>}
                   </div>
                 )}
               </div>
-            </div>
-            <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
-              {r.exercises.map((e,i) => <Tag key={i}>{e.name}</Tag>)}
-            </div>
-          </Card>
-        ))}
-        {myRoutines.length === 0 && (
-          <div style={{ textAlign:"center", color:"var(--sub)", padding:32, background:"var(--card)", borderRadius:12, border:"1px dashed var(--border)" }}>
-            <div style={{ fontSize:32, marginBottom:8 }}>📋</div>
-            <div>No hay rutinas asignadas todavía</div>
-            {canEdit && <div style={{ fontSize:12, marginTop:4 }}>Creá una nueva o importá desde CSV</div>}
-          </div>
-        )}
-      </div>
+            );
+          })()}
+        </>
+      )}
 
-      {/* ADD ROUTINE MODAL */}
-      {(modal === "add" || modal === "edit") && (
-        <Modal title={modal==="edit"?"Editar Rutina":"Nueva Rutina"} onClose={()=>setModal(null)}>
-          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-            <div><Label>NOMBRE DE LA RUTINA</Label><input placeholder="Ej: Día 1 – Pierna Fuerza" value={form.label} onChange={e=>setForm(p=>({...p,label:e.target.value}))}/></div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-              <div><Label>SEMANA</Label><input type="number" min="1" value={form.semana} onChange={e=>setForm(p=>({...p,semana:+e.target.value}))}/></div>
-              <div><Label>DURACIÓN</Label><input placeholder="60–75 min" value={form.duracion} onChange={e=>setForm(p=>({...p,duracion:e.target.value}))}/></div>
+      {/* ── ASSIGN MODAL ── */}
+      {assignModal && (
+        <Modal title="Asignar rutina a alumno" onClose={()=>setAssignModal(null)} width={500}>
+          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+            <div>
+              <Label>ALUMNO</Label>
+              <select value={assignAlumnoId} onChange={e=>setAssignAlumnoId(e.target.value)}>
+                <option value="">— Elegir alumno —</option>
+                {alumnos.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
             </div>
-            <Divider/>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-              <Label>EJERCICIOS</Label>
-              <Btn onClick={addEx} v="ghost" style={{ fontSize:12, padding:"4px 10px" }}>+ Agregar</Btn>
-            </div>
-            {form.exercises.map((ex,i) => (
-              <div key={i} style={{ background:"var(--surface)", borderRadius:10, padding:10 }}>
-                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
-                  <span style={{ fontSize:12, fontWeight:600, color:"var(--sub)" }}>Ejercicio {i+1}</span>
-                  <button onClick={()=>remEx(i)} style={{ background:"none", border:"none", color:"var(--red)", fontSize:16 }}>×</button>
-                </div>
-                <input placeholder="Nombre del ejercicio" value={ex.name} onChange={e=>updEx(i,"name",e.target.value)} style={{ marginBottom:6 }}/>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:5, marginBottom:5 }}>
-                  <input type="number" placeholder="Series" value={ex.sets} onChange={e=>updEx(i,"sets",+e.target.value)}/>
-                  <input placeholder="Repeticiones" value={ex.reps} onChange={e=>updEx(i,"reps",e.target.value)}/>
-                  <input placeholder="Peso" value={ex.peso} onChange={e=>updEx(i,"peso",e.target.value)}/>
-                  <input placeholder="Descanso" value={ex.descanso} onChange={e=>updEx(i,"descanso",e.target.value)}/>
-                </div>
-                <input placeholder="Instrucción (opcional)" value={ex.instruccion} onChange={e=>updEx(i,"instruccion",e.target.value)}/>
+            <div>
+              <Label>MODALIDAD</Label>
+              <div style={{ display:"flex", gap:8 }}>
+                {[
+                  {id:"copy",    label:"📋 Copiar y personalizar", desc:"Copia independiente. Cambios solo para este alumno."},
+                  {id:"original",label:"🔗 Asignar original",      desc:"Vinculado al repositorio. Sin personalización."},
+                ].map(m=>(
+                  <button key={m.id} onClick={()=>setAssignMode(m.id)} style={{
+                    flex:1, background:assignMode===m.id?"var(--dim)":"var(--surface)",
+                    border:`2px solid ${assignMode===m.id?"var(--accent)":"var(--border)"}`,
+                    borderRadius:10, padding:"10px 8px", textAlign:"left", cursor:"pointer",
+                  }}>
+                    <div style={{ fontSize:12, fontWeight:700, color:assignMode===m.id?"var(--accent)":"var(--text)", marginBottom:4 }}>{m.label}</div>
+                    <div style={{ fontSize:11, color:"var(--sub)" }}>{m.desc}</div>
+                  </button>
+                ))}
               </div>
-            ))}
-            {form.exercises.length === 0 && (
-              <div style={{ textAlign:"center", color:"var(--sub)", fontSize:13, padding:16, background:"var(--surface)", borderRadius:9 }}>Aún no hay ejercicios</div>
-            )}
+            </div>
+            <div>
+              <Label>FECHA DE INICIO</Label>
+              <input type="date" value={assignStart} onChange={e=>setAssignStart(e.target.value)}/>
+            </div>
+            <div>
+              <Label>{t("diasEntrenamiento").toUpperCase()}</Label>
+              <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+                {DOW_LABELS.map(d=>(
+                  <button key={d.v} onClick={()=>toggleAssignDay(d.v)} style={{
+                    padding:"5px 11px", borderRadius:7, fontSize:12, fontWeight:700,
+                    background:assignDays.includes(d.v)?"var(--accent)":"var(--surface)",
+                    border:`1px solid ${assignDays.includes(d.v)?"var(--accent)":"var(--border)"}`,
+                    color:assignDays.includes(d.v)?"#fff":"var(--sub)",
+                  }}>{d.l}</button>
+                ))}
+              </div>
+              <div style={{ fontSize:11, color:"var(--sub)", marginTop:5 }}>
+                {assignDays.length} día{assignDays.length!==1?"s":""} por semana seleccionado{assignDays.length!==1?"s":""}
+              </div>
+            </div>
             <Divider/>
             <div style={{ display:"flex", gap:8 }}>
-              <Btn v="ghost" onClick={()=>setModal(null)} full>Cancelar</Btn>
-              <Btn onClick={saveRoutine} full disabled={!form.label||!form.exercises.length}>Guardar rutina ✓</Btn>
+              <Btn v="ghost" onClick={()=>setAssignModal(null)} full>Cancelar</Btn>
+              <Btn onClick={confirmAssign} full disabled={!assignAlumnoId||!assignDays.length}>Asignar ✓</Btn>
             </div>
           </div>
         </Modal>
       )}
 
-      {/* IMPORT MODAL */}
-      {modal === "import" && (
-        <Modal title="Importar Rutina desde CSV / XLSX" onClose={()=>setModal(null)}>
-          <ImportModule alumnoId={alumnoId} onImport={handleImport} onClose={()=>setModal(null)}/>
+      {/* ── REPO ADD/EDIT MODAL ── */}
+      {(repoModal==="add"||repoModal==="edit") && (
+        <Modal title={repoModal==="edit"?"Editar rutina del repositorio":"Nueva rutina en repositorio"} onClose={()=>setRepoModal(null)}>
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            <div><Label>NOMBRE</Label><input placeholder="Ej: Pierna Fuerza A" value={repoForm.label} onChange={e=>setRepoForm(p=>({...p,label:e.target.value}))}/></div>
+            <div><Label>DURACIÓN</Label><input placeholder="60–75 min" value={repoForm.duracion} onChange={e=>setRepoForm(p=>({...p,duracion:e.target.value}))}/></div>
+            <Divider/>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <Label>EJERCICIOS</Label>
+              <Btn onClick={addRepoEx} v="ghost" style={{ fontSize:12, padding:"4px 10px" }}>+ Agregar</Btn>
+            </div>
+            {repoForm.exercises.map((ex,i)=>(
+              <div key={i} style={{ background:"var(--surface)", borderRadius:10, padding:10 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}>
+                  <span style={{ fontSize:12, fontWeight:600, color:"var(--sub)" }}>Ejercicio {i+1}</span>
+                  <button onClick={()=>remRepoEx(i)} style={{ background:"none",border:"none",color:"var(--red)",fontSize:16 }}>×</button>
+                </div>
+                <input placeholder="Nombre" value={ex.name} onChange={e=>updRepoEx(i,"name",e.target.value)} style={{ marginBottom:5 }}/>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:5, marginBottom:5 }}>
+                  <input type="number" placeholder="Series" value={ex.sets} onChange={e=>updRepoEx(i,"sets",+e.target.value)}/>
+                  <input placeholder="Reps" value={ex.reps} onChange={e=>updRepoEx(i,"reps",e.target.value)}/>
+                  <input placeholder="Peso ref." value={ex.peso} onChange={e=>updRepoEx(i,"peso",e.target.value)}/>
+                  <input placeholder="Descanso" value={ex.descanso} onChange={e=>updRepoEx(i,"descanso",e.target.value)}/>
+                </div>
+                <input placeholder="Instrucción (opcional)" value={ex.instruccion} onChange={e=>updRepoEx(i,"instruccion",e.target.value)}/>
+              </div>
+            ))}
+            {repoForm.exercises.length===0 && <div style={{ textAlign:"center",color:"var(--sub)",fontSize:13,padding:16,background:"var(--surface)",borderRadius:9 }}>Sin ejercicios todavía</div>}
+            <Divider/>
+            <div style={{ display:"flex", gap:8 }}>
+              <Btn v="ghost" onClick={()=>setRepoModal(null)} full>Cancelar</Btn>
+              <Btn onClick={saveRepo} full disabled={!repoForm.label}>Guardar ✓</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── IMPORT TO REPO MODAL ── */}
+      {repoModal==="import" && (
+        <Modal title="Importar al Repositorio" onClose={()=>setRepoModal(null)}>
+          <ImportModule alumnoId={null} coachId={coachId} onImport={(r)=>{dispatch("ADD_REPO_ROUTINE",{...r,id:"repo"+Date.now(),coachId,label:r.label});}} onClose={()=>setRepoModal(null)} toRepo={true}/>
+        </Modal>
+      )}
+
+      {/* ── EDIT ASSIGNED ROUTINE MODAL ── */}
+      {editModal && (
+        <Modal title="Editar rutina asignada" onClose={()=>setEditModal(null)}>
+          <div style={{ background:"#f9731611", border:"1px solid #f9731633", borderRadius:8, padding:"8px 12px", fontSize:12, color:"var(--orange)", marginBottom:12 }}>
+            ✏️ Modificás solo la copia de este alumno — el repositorio no cambia
+          </div>
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            <div><Label>NOMBRE</Label><input value={editForm.label} onChange={e=>setEditForm(p=>({...p,label:e.target.value}))}/></div>
+            <div><Label>DURACIÓN</Label><input value={editForm.duracion} onChange={e=>setEditForm(p=>({...p,duracion:e.target.value}))}/></div>
+            <Divider/>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <Label>EJERCICIOS</Label>
+              <Btn onClick={addEditEx} v="ghost" style={{ fontSize:12, padding:"4px 10px" }}>+ Agregar</Btn>
+            </div>
+            {editForm.exercises.map((ex,i)=>(
+              <div key={i} style={{ background:"var(--surface)", borderRadius:10, padding:10 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}>
+                  <span style={{ fontSize:12,fontWeight:600,color:"var(--sub)" }}>Ejercicio {i+1}</span>
+                  <button onClick={()=>remEditEx(i)} style={{ background:"none",border:"none",color:"var(--red)",fontSize:16 }}>×</button>
+                </div>
+                <input value={ex.name} onChange={e=>updEditEx(i,"name",e.target.value)} style={{ marginBottom:5 }}/>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:5, marginBottom:5 }}>
+                  <input type="number" value={ex.sets} onChange={e=>updEditEx(i,"sets",+e.target.value)} placeholder="Series"/>
+                  <input value={ex.reps} onChange={e=>updEditEx(i,"reps",e.target.value)} placeholder="Reps"/>
+                  <input value={ex.peso} onChange={e=>updEditEx(i,"peso",e.target.value)} placeholder="Peso"/>
+                  <input value={ex.descanso} onChange={e=>updEditEx(i,"descanso",e.target.value)} placeholder="Descanso"/>
+                </div>
+                <input value={ex.instruccion||""} onChange={e=>updEditEx(i,"instruccion",e.target.value)} placeholder="Instrucción"/>
+              </div>
+            ))}
+            <Divider/>
+            <div style={{ display:"flex", gap:8 }}>
+              <Btn v="ghost" onClick={()=>setEditModal(null)} full>Cancelar</Btn>
+              <Btn onClick={saveEdit} full disabled={!editForm.label}>Guardar cambios ✓</Btn>
+            </div>
+          </div>
         </Modal>
       )}
     </div>
@@ -2488,24 +2871,12 @@ function InicioModule({ currentUser, onNavigate }) {
         </Card>
       )}
 
-      {/* Metrics quick entry — one card per active objective */}
-      {myObjectives.length > 0 && (
-        <Card style={{ marginBottom:12 }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-            <div style={{ fontSize:11, color:"var(--sub)", fontWeight:600, letterSpacing:1 }}>REGISTRAR MÉTRICAS</div>
-            <Btn onClick={()=>onNavigate&&onNavigate("metrics")} v="ghost" style={{ fontSize:11, padding:"3px 10px" }}>Ver historial →</Btn>
-          </div>
-          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-            {myObjectives.slice(0,2).map(o=>(
-              <MetricEntryCard key={o.id} objId={o.id} alumnoId={currentUser.id}/>
-            ))}
-          </div>
-        </Card>
-      )}
-
       {Object.keys(progData).length > 0 && (
         <Card style={{ marginBottom:12 }}>
-          <div style={{ fontSize:11, color:"var(--sub)", fontWeight:600, letterSpacing:1, marginBottom:10 }}>PROGRESO RECIENTE</div>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+            <div style={{ fontSize:11, color:"var(--sub)", fontWeight:600, letterSpacing:1 }}>PROGRESO RECIENTE</div>
+            <Btn onClick={()=>onNavigate&&onNavigate("metrics")} v="ghost" style={{ fontSize:11, padding:"3px 10px" }}>Ver métricas →</Btn>
+          </div>
           {Object.entries(progData).slice(0,2).map(([ex, vals]) => (
             <div key={ex} style={{ marginBottom:10 }}>
               <div style={{ display:"flex", justifyContent:"space-between", fontSize:13, fontWeight:600, marginBottom:4 }}>
@@ -2535,19 +2906,32 @@ function InicioModule({ currentUser, onNavigate }) {
 
 function ConfigModule({ currentUser, onLogout, onUserUpdate }) {
   const theme = getTheme(currentUser);
+  const t = useLang(currentUser);
   const isSA = currentUser.role === "superadmin";
+  const isAlumno = currentUser.role === "alumno";
   const [form, setForm] = useState({
     name:      currentUser.name,
     email:     currentUser.email,
     phone:     currentUser.phone || "",
     birthdate: currentUser.birthdate || "",
-    lang:      "Español",
+    lang:      currentUser.lang || "Español",
+    units:     currentUser.units || "kg",
     photo:     currentUser.photo || null,
+    pesoInicial: currentUser.pesoInicial || "",
+    pesoObj:     currentUser.pesoObj || "",
+    altura:      currentUser.altura || "",
   });
   const [pwForm, setPwForm] = useState({ current:"", next:"", confirm:"" });
   const [saved, setSaved]   = useState(false);
   const [pwMsg, setPwMsg]   = useState("");
-  const [section, setSection] = useState("perfil"); // perfil | seguridad
+  const [section, setSection] = useState("perfil");
+
+  const bmi = calcBMI(parseFloat(form.pesoInicial), parseFloat(form.altura));
+  const langCode = LANG_CODES[form.lang] || "es";
+
+  const age = currentUser.birthdate
+    ? Math.floor((new Date() - new Date(currentUser.birthdate)) / (365.25*24*60*60*1000))
+    : null;
 
   const saveProfile = () => {
     onUserUpdate({ ...currentUser, ...form });
@@ -2556,107 +2940,166 @@ function ConfigModule({ currentUser, onLogout, onUserUpdate }) {
   };
 
   const changePw = () => {
-    if (pwForm.current !== currentUser.password) { setPwMsg("La contraseña actual es incorrecta"); return; }
-    if (pwForm.next.length < 4) { setPwMsg("La nueva contraseña debe tener al menos 4 caracteres"); return; }
+    if (pwForm.current !== currentUser.password) { setPwMsg("Contraseña actual incorrecta"); return; }
+    if (pwForm.next.length < 4) { setPwMsg("Mínimo 4 caracteres"); return; }
     if (pwForm.next !== pwForm.confirm) { setPwMsg("Las contraseñas no coinciden"); return; }
     onUserUpdate({ ...currentUser, password: pwForm.next });
-    setPwMsg("✓ Contraseña actualizada correctamente");
+    setPwMsg("✓ Contraseña actualizada");
     setPwForm({ current:"", next:"", confirm:"" });
   };
 
   const roleLabel = { superadmin:"⭐ SuperAdmin", coach:"🔴 Entrenador", alumno:"Alumno" };
+  const sections = isAlumno
+    ? ["perfil","cuerpo","unidades","seguridad"]
+    : ["perfil","unidades","seguridad"];
+
+  const sectionLabels = { perfil:"👤 "+t("perfil"), cuerpo:"📍 "+t("puntoPartida"), unidades:"⚖️ "+t("unidades"), seguridad:"🔒 "+t("seguridad") };
 
   return (
     <div className="fade">
-      <H size={20} style={{ marginBottom:16 }}>Configuración</H>
+      <H size={20} style={{ marginBottom:16 }}>{t("config")}</H>
 
-      {/* Section tabs */}
-      <div style={{ display:"flex", gap:6, marginBottom:16 }}>
-        {["perfil","seguridad"].map(s => (
-          <button key={s} onClick={()=>setSection(s)} style={{ flex:1, background:section===s?"var(--accent)":"var(--card)", border:`1px solid ${section===s?"var(--accent)":"var(--border)"}`, color:section===s?"#fff":"var(--sub)", borderRadius:9, padding:"8px", fontSize:13, fontWeight:600, textTransform:"capitalize" }}>
-            {s==="perfil"?"👤 Perfil":"🔒 Seguridad"}
+      <div style={{ display:"flex", gap:5, overflowX:"auto", paddingBottom:4, marginBottom:16 }}>
+        {sections.map(s => (
+          <button key={s} onClick={()=>setSection(s)} style={{ flexShrink:0, background:section===s?"var(--accent)":"var(--card)", border:`1px solid ${section===s?"var(--accent)":"var(--border)"}`, color:section===s?"#fff":"var(--sub)", borderRadius:9, padding:"7px 14px", fontSize:12, fontWeight:600 }}>
+            {sectionLabels[s]}
           </button>
         ))}
       </div>
 
+      {/* ── PERFIL ── */}
       {section === "perfil" && (
         <Card>
-          {/* Photo upload — only for non-superadmin */}
           {!isSA && (
-            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:20, gap:10 }}>
-              <PhotoUpload onPhoto={photo => setForm(p=>({...p,photo}))}>
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:20, gap:8 }}>
+              <PhotoUpload onPhoto={photo=>setForm(p=>({...p,photo}))}>
                 <Avatar name={form.name} color={theme.accent} size={80} photo={form.photo} editable={true}/>
               </PhotoUpload>
               <div style={{ textAlign:"center" }}>
                 <div style={{ fontSize:13, fontWeight:600 }}>{form.name}</div>
-                <div style={{ fontSize:11, color:"var(--sub)" }}>{roleLabel[currentUser.role]}</div>
-                <div style={{ fontSize:11, color:"var(--sub)", marginTop:2 }}>Tocá la foto para cambiarla</div>
+                <div style={{ fontSize:11, color:"var(--sub)" }}>{roleLabel[currentUser.role]}{age?` · ${age} años`:""}</div>
+                <div style={{ fontSize:11, color:"var(--sub)", marginTop:1 }}>Tocá la foto para cambiarla</div>
               </div>
             </div>
           )}
-
-          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+          <div style={{ display:"flex", flexDirection:"column", gap:11 }}>
+            <div><Label>{t("nombre").toUpperCase()}</Label><input value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))}/></div>
+            <div><Label>{t("email").toUpperCase()}</Label><input value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))}/></div>
+            <div><Label>{t("celular").toUpperCase()}</Label><input value={form.phone} onChange={e=>setForm(p=>({...p,phone:e.target.value}))} placeholder="+54 11 ..."/></div>
+            <div><Label>{t("nacimiento").toUpperCase()}</Label><input type="date" value={form.birthdate} onChange={e=>setForm(p=>({...p,birthdate:e.target.value}))}/></div>
             <div>
-              <Label>NOMBRE COMPLETO</Label>
-              <input value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} placeholder="Tu nombre"/>
-            </div>
-            <div>
-              <Label>EMAIL</Label>
-              <input value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))} placeholder="email@ejemplo.com"/>
-            </div>
-            <div>
-              <Label>NÚMERO DE CELULAR</Label>
-              <input value={form.phone} onChange={e=>setForm(p=>({...p,phone:e.target.value}))} placeholder="+54 11 1234-5678"/>
-            </div>
-            <div>
-              <Label>FECHA DE NACIMIENTO</Label>
-              <input type="date" value={form.birthdate} onChange={e=>setForm(p=>({...p,birthdate:e.target.value}))}/>
-            </div>
-            <div>
-              <Label>IDIOMA</Label>
+              <Label>{t("idioma").toUpperCase()}</Label>
               <select value={form.lang} onChange={e=>setForm(p=>({...p,lang:e.target.value}))}>
-                <option>Español</option>
-                <option>English</option>
-                <option>Português</option>
+                {Object.values(T).map(tl=><option key={tl.lang} value={tl.lang}>{tl.lang}</option>)}
               </select>
             </div>
-            <div style={{ background:"var(--surface)", borderRadius:9, padding:"10px 14px" }}>
-              <div style={{ fontSize:11, color:"var(--sub)", marginBottom:2 }}>ROL</div>
-              <div style={{ fontSize:13, fontWeight:600, color:"var(--accent)" }}>{roleLabel[currentUser.role]}</div>
+            <div style={{ background:"var(--surface)", borderRadius:9, padding:"9px 12px", display:"flex", justifyContent:"space-between" }}>
+              <span style={{ fontSize:11, color:"var(--sub)" }}>{t("rol").toUpperCase()}</span>
+              <span style={{ fontSize:13, fontWeight:600, color:"var(--accent)" }}>{roleLabel[currentUser.role]}</span>
             </div>
           </div>
-
-          <Divider style={{ margin:"16px 0" }}/>
-          {saved
-            ? <div style={{ background:"#22c55e11", border:"1px solid #22c55e33", borderRadius:9, padding:"10px 14px", color:"#22c55e", fontWeight:600, textAlign:"center" }}>✓ Cambios guardados</div>
-            : <Btn onClick={saveProfile} full>Guardar cambios</Btn>
-          }
+          <Divider style={{ margin:"14px 0" }}/>
+          {saved ? <div style={{ background:"#22c55e11", border:"1px solid #22c55e33", borderRadius:9, padding:10, color:"#22c55e", fontWeight:600, textAlign:"center" }}>✓ {t("guardar")}</div>
+                 : <Btn onClick={saveProfile} full>{t("guardar")}</Btn>}
         </Card>
       )}
 
-      {section === "seguridad" && (
+      {/* ── PUNTO DE PARTIDA (alumno only) ── */}
+      {section === "cuerpo" && isAlumno && (
         <Card>
-          <H size={15} style={{ marginBottom:14 }}>Cambiar contraseña</H>
-          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-            <div>
-              <Label>CONTRASEÑA ACTUAL</Label>
-              <input type="password" value={pwForm.current} onChange={e=>setPwForm(p=>({...p,current:e.target.value}))} placeholder="••••••••"/>
+          <div style={{ fontSize:12, color:"var(--sub)", marginBottom:14 }}>Datos registrados al inicio. Sirven como referencia de evolución.</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:11 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+              <div>
+                <Label>{t("pesoInicial").toUpperCase()} (kg)</Label>
+                <input type="number" step="0.1" value={form.pesoInicial} onChange={e=>setForm(p=>({...p,pesoInicial:e.target.value}))} placeholder="Ej: 75"/>
+              </div>
+              <div>
+                <Label>{t("altura").toUpperCase()} (cm)</Label>
+                <input type="number" value={form.altura} onChange={e=>setForm(p=>({...p,altura:e.target.value}))} placeholder="Ej: 175"/>
+              </div>
             </div>
             <div>
-              <Label>NUEVA CONTRASEÑA</Label>
-              <input type="password" value={pwForm.next} onChange={e=>setPwForm(p=>({...p,next:e.target.value}))} placeholder="••••••••"/>
+              <Label>{t("pesoObj").toUpperCase()}</Label>
+              <input type="number" step="0.1" value={form.pesoObj} onChange={e=>setForm(p=>({...p,pesoObj:e.target.value}))} placeholder="Opcional"/>
             </div>
-            <div>
-              <Label>CONFIRMAR NUEVA CONTRASEÑA</Label>
-              <input type="password" value={pwForm.confirm} onChange={e=>setPwForm(p=>({...p,confirm:e.target.value}))} placeholder="••••••••"/>
-            </div>
+            {bmi && (
+              <div style={{ background:"var(--surface)", borderRadius:9, padding:"10px 14px" }}>
+                <div style={{ fontSize:11, color:"var(--sub)", marginBottom:4 }}>{t("imc").toUpperCase()}</div>
+                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <span style={{ fontFamily:"'Rajdhani',sans-serif", fontWeight:700, fontSize:28, color:"var(--accent)" }}>{bmi}</span>
+                  <span style={{ fontSize:13, color:"var(--sub)" }}>{bmiCategory(bmi, langCode)}</span>
+                </div>
+                <div style={{ height:6, background:"var(--border)", borderRadius:3, marginTop:8, overflow:"hidden" }}>
+                  <div style={{ height:"100%", width:`${Math.min((bmi/40)*100,100)}%`, background:bmi<18.5?"#3b82f6":bmi<25?"#22c55e":bmi<30?"#f97316":"#ef4444", borderRadius:3 }}/>
+                </div>
+                <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:"var(--muted)", marginTop:3 }}>
+                  <span>Bajo peso</span><span>Normal</span><span>Sobrepeso</span><span>Obesidad</span>
+                </div>
+              </div>
+            )}
+            {currentUser.registeredAt && (
+              <div style={{ background:"var(--surface)", borderRadius:9, padding:"8px 12px", display:"flex", justifyContent:"space-between" }}>
+                <span style={{ fontSize:11, color:"var(--sub)" }}>Fecha de registro</span>
+                <span style={{ fontSize:12, fontWeight:600 }}>{new Date(currentUser.registeredAt).toLocaleDateString("es",{day:"numeric",month:"long",year:"numeric"})}</span>
+              </div>
+            )}
           </div>
-          {pwMsg && (
-            <div style={{ marginTop:10, padding:"8px 12px", borderRadius:8, fontSize:13, background:pwMsg.startsWith("✓")?"#22c55e11":"#ef444411", color:pwMsg.startsWith("✓")?"#22c55e":"#ef4444", border:`1px solid ${pwMsg.startsWith("✓")?"#22c55e33":"#ef444433"}` }}>
-              {pwMsg}
+          <Divider style={{ margin:"14px 0" }}/>
+          {saved ? <div style={{ background:"#22c55e11", border:"1px solid #22c55e33", borderRadius:9, padding:10, color:"#22c55e", fontWeight:600, textAlign:"center" }}>✓ Guardado</div>
+                 : <Btn onClick={saveProfile} full>{t("guardar")}</Btn>}
+        </Card>
+      )}
+
+      {/* ── UNIDADES ── */}
+      {section === "unidades" && (
+        <Card>
+          <div style={{ fontSize:13, fontWeight:600, marginBottom:14 }}>Elegí las unidades para registrar pesos en rutinas, progreso y métricas corporales.</div>
+          <div style={{ display:"flex", gap:10, marginBottom:16 }}>
+            {["kg","lbs"].map(u=>(
+              <button key={u} onClick={()=>setForm(p=>({...p,units:u}))} style={{
+                flex:1, padding:"16px", borderRadius:12,
+                background:form.units===u?"var(--accent)":"var(--surface)",
+                border:`2px solid ${form.units===u?"var(--accent)":"var(--border)"}`,
+                color:form.units===u?"#fff":"var(--sub)", fontSize:16, fontWeight:700,
+              }}>
+                {u === "kg" ? "🇰🇬 Kilogramos" : "🇺🇸 Libras"}
+                <div style={{ fontSize:11, fontWeight:400, marginTop:4, opacity:.8 }}>
+                  {u==="kg"?"Sistema métrico internacional":"Sistema imperial"}
+                </div>
+              </button>
+            ))}
+          </div>
+          {form.units === "lbs" && (
+            <div style={{ background:"var(--surface)", borderRadius:9, padding:"10px 14px", fontSize:12, color:"var(--sub)", marginBottom:14 }}>
+              💡 1 kg = 2.205 lbs — Los valores se convierten automáticamente en toda la app
             </div>
           )}
-          <Divider style={{ margin:"16px 0" }}/>
+          <div style={{ background:"var(--surface)", borderRadius:9, padding:"10px 14px", marginBottom:14 }}>
+            <div style={{ fontSize:11, color:"var(--sub)", marginBottom:6 }}>EJEMPLOS DE CONVERSIÓN</div>
+            {[60,80,100,120].map(kg=>(
+              <div key={kg} style={{ display:"flex", justifyContent:"space-between", padding:"3px 0", fontSize:12 }}>
+                <span>{kg} kg</span>
+                <span style={{ color:"var(--accent)", fontWeight:600 }}>{toDisplay(kg, form.units)} {form.units}</span>
+              </div>
+            ))}
+          </div>
+          {saved ? <div style={{ background:"#22c55e11", border:"1px solid #22c55e33", borderRadius:9, padding:10, color:"#22c55e", fontWeight:600, textAlign:"center" }}>✓ Guardado</div>
+                 : <Btn onClick={saveProfile} full>{t("guardar")}</Btn>}
+        </Card>
+      )}
+
+      {/* ── SEGURIDAD ── */}
+      {section === "seguridad" && (
+        <Card>
+          <H size={15} style={{ marginBottom:14 }}>🔒 {t("seguridad")}</H>
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            <div><Label>CONTRASEÑA ACTUAL</Label><input type="password" value={pwForm.current} onChange={e=>setPwForm(p=>({...p,current:e.target.value}))} placeholder="••••••••"/></div>
+            <div><Label>NUEVA CONTRASEÑA</Label><input type="password" value={pwForm.next} onChange={e=>setPwForm(p=>({...p,next:e.target.value}))} placeholder="••••••••"/></div>
+            <div><Label>CONFIRMAR</Label><input type="password" value={pwForm.confirm} onChange={e=>setPwForm(p=>({...p,confirm:e.target.value}))} placeholder="••••••••"/></div>
+          </div>
+          {pwMsg && <div style={{ marginTop:10, padding:"8px 12px", borderRadius:8, fontSize:13, background:pwMsg.startsWith("✓")?"#22c55e11":"#ef444411", color:pwMsg.startsWith("✓")?"#22c55e":"#ef4444", border:`1px solid ${pwMsg.startsWith("✓")?"#22c55e33":"#ef444433"}` }}>{pwMsg}</div>}
+          <Divider style={{ margin:"14px 0" }}/>
           <Btn onClick={changePw} full>Actualizar contraseña 🔒</Btn>
         </Card>
       )}
