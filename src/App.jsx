@@ -1,6 +1,6 @@
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// FUERZA INTELIGENTE V6 — Arquitectura Modular
+// FUERZA INTELIGENTE V7 — Arquitectura Modular
 // ═══════════════════════════════════════════════════════════════════════════════
 //
 //  MÓDULOS (cada bloque es independiente):
@@ -129,11 +129,11 @@ const INITIAL_STORE = {
   // Usuarios: superadmin → coach → alumno
   users: [
     { id:"sa1", role:"superadmin", name:"Admin Master", email:"admin@fi.com",  password:"admin123", gender:null,     coachId:null,  active:true, photo:null, phone:"", birthdate:"" },
-    { id:"c1", suspended:false, suspendedAt:null, role:"coach", name:"Martín López", email:"martin@fi.com", password:"1234", gender:null, coachId:"sa1", active:true, photo:null, phone:"+54 11 1234-5678", birthdate:"1988-03-15", alumnoLimit:null, expiresAt:null, lang:"es", units:"kg" },
-    { id:"c2", suspended:false, suspendedAt:null, role:"coach", name:"Sofía Ruiz", email:"sofia@fi.com", password:"1234", gender:"female", coachId:"sa1", active:true, photo:null, phone:"+54 11 9876-5432", birthdate:"1992-07-22", alumnoLimit:20, expiresAt:null, lang:"es", units:"kg" },
-    { id:"a1", suspended:false, suspendedAt:null, role:"alumno", name:"Juan Pérez", email:"juan@fi.com", password:"1234", gender:"male", coachId:"c1", active:true, photo:null, phone:"+54 11 5555-1234", birthdate:"1995-11-08", objectives:[{id:"fuerza_max",priority:"principal",completed:false},{id:"hipertrofia",priority:"secundario",completed:false},{id:"core",priority:"secundario",completed:false}], pesoInicial:82, pesoObj:88, altura:178, lang:"es", units:"kg", registeredAt:"2024-11-08" },
-    { id:"a2", suspended:false, suspendedAt:null, role:"alumno", name:"Laura García", email:"laura@fi.com", password:"1234", gender:"female", coachId:"c1", active:true, photo:null, phone:"+54 11 4444-9999", birthdate:"1998-02-14", objectives:[{id:"desc_grasa",priority:"principal",completed:false},{id:"hipertrofia",priority:"secundario",completed:false}], pesoInicial:65, pesoObj:58, altura:163, lang:"es", units:"kg", registeredAt:"2024-02-14" },
-    { id:"a3", suspended:false, suspendedAt:null, role:"alumno", name:"Diego Torres", email:"diego@fi.com", password:"1234", gender:"male", coachId:"c2", active:true, photo:null, phone:"", birthdate:"1993-06-30", objectives:[], pesoInicial:null, pesoObj:null, altura:null, lang:"es", units:"kg", registeredAt:"2024-06-30" },
+    { id:"c1", suspended:false, suspendedAt:null, themePreset:"d-red", themeInverted:false, role:"coach", name:"Martín López", email:"martin@fi.com", password:"1234", gender:null, coachId:"sa1", active:true, photo:null, phone:"+54 11 1234-5678", birthdate:"1988-03-15", alumnoLimit:null, expiresAt:null, lang:"es", units:"kg" },
+    { id:"c2", suspended:false, suspendedAt:null, themePreset:"d-red", themeInverted:false, role:"coach", name:"Sofía Ruiz", email:"sofia@fi.com", password:"1234", gender:"female", coachId:"sa1", active:true, photo:null, phone:"+54 11 9876-5432", birthdate:"1992-07-22", alumnoLimit:20, expiresAt:null, lang:"es", units:"kg" },
+    { id:"a1", suspended:false, suspendedAt:null, themePreset:"d-blue", themeInverted:false, role:"alumno", name:"Juan Pérez", email:"juan@fi.com", password:"1234", gender:"male", coachId:"c1", active:true, photo:null, phone:"+54 11 5555-1234", birthdate:"1995-11-08", objectives:[{id:"fuerza_max",priority:"principal",completed:false},{id:"hipertrofia",priority:"secundario",completed:false},{id:"core",priority:"secundario",completed:false}], pesoInicial:82, pesoObj:88, altura:178, lang:"es", units:"kg", registeredAt:"2024-11-08" },
+    { id:"a2", suspended:false, suspendedAt:null, themePreset:"d-purple", themeInverted:false, role:"alumno", name:"Laura García", email:"laura@fi.com", password:"1234", gender:"female", coachId:"c1", active:true, photo:null, phone:"+54 11 4444-9999", birthdate:"1998-02-14", objectives:[{id:"desc_grasa",priority:"principal",completed:false},{id:"hipertrofia",priority:"secundario",completed:false}], pesoInicial:65, pesoObj:58, altura:163, lang:"es", units:"kg", registeredAt:"2024-02-14" },
+    { id:"a3", suspended:false, suspendedAt:null, themePreset:"d-blue", themeInverted:false, role:"alumno", name:"Diego Torres", email:"diego@fi.com", password:"1234", gender:"male", coachId:"c2", active:true, photo:null, phone:"", birthdate:"1993-06-30", objectives:[], pesoInicial:null, pesoObj:null, altura:null, lang:"es", units:"kg", registeredAt:"2024-06-30" },
   ],
   // Rutinas por alumno
   routines: {
@@ -376,6 +376,11 @@ function StoreProvider({ children }) {
           return { ...prev, routines: { ...prev.routines, [alumnoId]: updatedRoutines }, users: updatedUsers };
         }
         // ── MESSAGES ──
+        case "MARK_READ": {
+          // Mark all messages from a sender as read
+          const { key, fromId } = payload;
+          return { ...prev, messages: { ...prev.messages, [key]: (prev.messages[key]||[]).map(m => m.from===fromId ? {...m, read:true} : m) } };
+        }
         case "ADD_MESSAGE": {
           const key = payload.key;
           return { ...prev, messages: { ...prev.messages, [key]: [...(prev.messages[key]||[]), payload.msg] } };
@@ -414,6 +419,59 @@ function StoreProvider({ children }) {
 
 // ───────────────────────────────────────────────────────────────────────────────
 // THEMES
+
+
+// ───────────────────────────────────────────────────────────────────────────────
+// THEME PRESETS — 11 cuadraditos (5 dark + 5 light + 1 split)
+// ───────────────────────────────────────────────────────────────────────────────
+const THEME_PRESETS = [
+  // Dark themes (fondo oscuro + acento color)
+  { id:"d-red",    bg:"#0a0a0f", surface:"#13131a", card:"#16161f", text:"#e2e2ee", sub:"#7b7b9a", border:"#22223a", accent:"#e63946", label:"Negro / Rojo",    dark:true  },
+  { id:"d-blue",   bg:"#0a0a0f", surface:"#13131a", card:"#16161f", text:"#e2e2ee", sub:"#7b7b9a", border:"#22223a", accent:"#2563eb", label:"Negro / Azul",    dark:true  },
+  { id:"d-purple", bg:"#0a0a0f", surface:"#13131a", card:"#16161f", text:"#e2e2ee", sub:"#7b7b9a", border:"#22223a", accent:"#7c3aed", label:"Negro / Violeta", dark:true  },
+  { id:"d-green",  bg:"#0a0a0f", surface:"#13131a", card:"#16161f", text:"#e2e2ee", sub:"#7b7b9a", border:"#22223a", accent:"#059669", label:"Negro / Verde",   dark:true  },
+  { id:"d-orange", bg:"#0a0a0f", surface:"#13131a", card:"#16161f", text:"#e2e2ee", sub:"#7b7b9a", border:"#22223a", accent:"#f97316", label:"Negro / Naranja", dark:true  },
+  // Light themes (fondo claro + acento color)
+  { id:"l-red",    bg:"#f8f8fc", surface:"#ffffff", card:"#ffffff", text:"#1a1a2e", sub:"#6b6b8a", border:"#e0e0f0", accent:"#e63946", label:"Blanco / Rojo",    dark:false },
+  { id:"l-blue",   bg:"#f8f8fc", surface:"#ffffff", card:"#ffffff", text:"#1a1a2e", sub:"#6b6b8a", border:"#e0e0f0", accent:"#2563eb", label:"Blanco / Azul",    dark:false },
+  { id:"l-purple", bg:"#f8f8fc", surface:"#ffffff", card:"#ffffff", text:"#1a1a2e", sub:"#6b6b8a", border:"#e0e0f0", accent:"#7c3aed", label:"Blanco / Violeta", dark:false },
+  { id:"l-green",  bg:"#f8f8fc", surface:"#ffffff", card:"#ffffff", text:"#1a1a2e", sub:"#6b6b8a", border:"#e0e0f0", accent:"#059669", label:"Blanco / Verde",   dark:false },
+  { id:"l-orange", bg:"#f8f8fc", surface:"#ffffff", card:"#ffffff", text:"#1a1a2e", sub:"#6b6b8a", border:"#e0e0f0", accent:"#f97316", label:"Blanco / Naranja", dark:false },
+  // Split: negro/blanco inverso
+  { id:"split",    bg:"#0a0a0f", surface:"#13131a", card:"#16161f", text:"#e2e2ee", sub:"#7b7b9a", border:"#22223a", accent:"#ffffff", label:"Negro / Blanco",   dark:true, split:true },
+];
+
+// Get inverted preset for a given preset id
+const getInverted = (presetId) => {
+  const p = THEME_PRESETS.find(t=>t.id===presetId);
+  if (!p) return null;
+  if (p.split) return { ...p, id:"split-inv", bg:"#ffffff", surface:"#f0f0f8", card:"#ffffff", text:"#0a0a0f", sub:"#6b6b8a", border:"#e0e0f0", accent:"#0a0a0f", label:"Blanco / Negro", split:true, inverted:true };
+  if (p.dark) {
+    // find light version
+    const colorKey = presetId.replace("d-","");
+    const light = THEME_PRESETS.find(t=>t.id===`l-${colorKey}`);
+    return light ? { ...light, id:presetId+"-inv", inverted:true } : null;
+  } else {
+    const colorKey = presetId.replace("l-","");
+    const dark = THEME_PRESETS.find(t=>t.id===`d-${colorKey}`);
+    return dark ? { ...dark, id:presetId+"-inv", inverted:true } : null;
+  }
+};
+
+function applyThemePreset(preset) {
+  if (!preset) return;
+  const root = document.documentElement;
+  root.style.setProperty("--bg",      preset.bg);
+  root.style.setProperty("--surface", preset.surface);
+  root.style.setProperty("--card",    preset.card);
+  root.style.setProperty("--border",  preset.border);
+  root.style.setProperty("--text",    preset.text);
+  root.style.setProperty("--sub",     preset.sub);
+  root.style.setProperty("--accent",  preset.accent);
+  root.style.setProperty("--dim",     preset.accent+"22");
+  document.body.style.background = preset.bg;
+  document.body.style.color = preset.text;
+}
 
 // ───────────────────────────────────────────────────────────────────────────────
 // [I18N] TRANSLATIONS
@@ -2318,56 +2376,167 @@ function ProgressModule({ currentUser, targetAlumnoId }) {
 function MessagesModule({ currentUser }) {
   const { store, dispatch } = useStore();
   const [input, setInput] = useState("");
+  const [showAll, setShowAll] = useState(false);
+  const [search, setSearch] = useState("");
+  const [mediaMode, setMediaMode] = useState(false); // image/video attach mode
+  const [linkMode, setLinkMode] = useState(false);
+  const [linkInput, setLinkInput] = useState("");
+  const mediaRef = useRef();
   const chatRef = useRef();
 
-  // Determinar contraparte
-  let pairs = [];
+  // Determine pairs
+  let allPairs = [];
   if (currentUser.role === "alumno") {
-    const coach = store.users.find(u => u.id === currentUser.coachId);
-    if (coach) pairs = [coach];
+    const coach = store.users.find(u=>u.id===currentUser.coachId);
+    if (coach) allPairs = [coach];
   } else if (currentUser.role === "coach") {
-    pairs = store.users.filter(u => u.role === "alumno" && u.coachId === currentUser.id && u.active);
+    allPairs = store.users.filter(u=>u.role==="alumno"&&u.coachId===currentUser.id&&u.active);
   } else if (currentUser.role === "superadmin") {
-    pairs = store.users.filter(u => u.role === "coach" && u.active);
+    allPairs = store.users.filter(u=>u.role==="coach"&&u.active);
   }
 
-  const [selectedId, setSelectedId] = useState(pairs[0]?.id || "");
-  useEffect(() => { if (!selectedId && pairs.length) setSelectedId(pairs[0].id); }, [pairs.map(p=>p.id).join(",")]);
-  useEffect(() => { if(chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight; }, [selectedId, store.messages]);
+  const getKey = (a,b) => [a,b].sort().join("-");
 
-  const getKey = (a, b) => [a,b].sort().join("-");
+  // Sort by last message time
+  const sortedPairs = [...allPairs].sort((a,b)=>{
+    const ka = getKey(currentUser.id,a.id), kb = getKey(currentUser.id,b.id);
+    const la = (store.messages[ka]||[]).at(-1)?.date||"";
+    const lb = (store.messages[kb]||[]).at(-1)?.date||"";
+    return lb.localeCompare(la);
+  });
+
+  const filteredPairs = search
+    ? sortedPairs.filter(p=>p.name.toLowerCase().includes(search.toLowerCase()))
+    : sortedPairs;
+
+  const visiblePairs = showAll ? filteredPairs : filteredPairs.slice(0,3);
+  const hasMore = filteredPairs.length > 3;
+
+  const [selectedId, setSelectedId] = useState(sortedPairs[0]?.id||"");
+  useEffect(()=>{ if(!selectedId&&sortedPairs.length) setSelectedId(sortedPairs[0].id); },[sortedPairs.map(p=>p.id).join(",")]);
+  useEffect(()=>{ if(chatRef.current) chatRef.current.scrollTop=chatRef.current.scrollHeight; },[selectedId,store.messages]);
+
+  // Mark as read when opening conversation
+  useEffect(()=>{
+    if (!selectedId) return;
+    const key = getKey(currentUser.id, selectedId);
+    dispatch("MARK_READ", { key, fromId:selectedId });
+  },[selectedId]);
+
   const key = getKey(currentUser.id, selectedId);
-  const msgs = store.messages[key] || [];
+  const msgs = store.messages[key]||[];
+
+  const sendMsg = (msgData) => {
+    if (!selectedId) return;
+    dispatch("ADD_MESSAGE", { key, msg:{ id:"msg"+Date.now(), from:currentUser.id, to:selectedId, ts:new Date().toLocaleTimeString("es",{hour:"2-digit",minute:"2-digit"}), date:new Date().toISOString(), read:false, ...msgData } });
+  };
 
   const send = () => {
-    if (!input.trim() || !selectedId) return;
-    dispatch("ADD_MESSAGE", { key, msg: { id:"msg"+Date.now(), from:currentUser.id, to:selectedId, text:input.trim(), ts:new Date().toLocaleTimeString("es",{hour:"2-digit",minute:"2-digit"}), date:new Date().toISOString(), read:false } });
+    if (!input.trim()) return;
+    sendMsg({ text:input.trim(), type:"text" });
     setInput("");
+  };
+
+  const sendLink = () => {
+    if (!linkInput.trim()) return;
+    // Detect YouTube/Instagram/TikTok
+    const isYT = linkInput.includes("youtube.com")||linkInput.includes("youtu.be");
+    const isIG = linkInput.includes("instagram.com");
+    const isTT = linkInput.includes("tiktok.com");
+    sendMsg({ text:linkInput.trim(), type:"link", linkType:isYT?"youtube":isIG?"instagram":isTT?"tiktok":"link" });
+    setLinkInput(""); setLinkMode(false);
+  };
+
+  const handleMedia = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const isVideo = file.type.startsWith("video/");
+      sendMsg({ text:"", type:isVideo?"video":"image", mediaData:ev.target.result, fileName:file.name });
+    };
+    reader.readAsDataURL(file);
   };
 
   const selUser = store.users.find(u=>u.id===selectedId);
   const selTheme = getTheme(selUser);
 
+  const renderMessage = (m, i) => {
+    const isMe = m.from === currentUser.id;
+    const bubbleStyle = { maxWidth:"76%", background:isMe?"var(--accent)":"var(--surface)", borderRadius:isMe?"12px 12px 2px 12px":"12px 12px 12px 2px", padding:"8px 12px", overflow:"hidden" };
+    return (
+      <div key={i} style={{ display:"flex", justifyContent:isMe?"flex-end":"flex-start" }}>
+        <div style={bubbleStyle}>
+          {m.type==="image" && m.mediaData && (
+            <img src={m.mediaData} alt="foto" style={{ width:"100%", maxWidth:200, borderRadius:8, display:"block", marginBottom:4 }} onClick={()=>window.open(m.mediaData)}/>
+          )}
+          {m.type==="video" && m.mediaData && (
+            <video src={m.mediaData} controls style={{ width:"100%", maxWidth:220, borderRadius:8, display:"block", marginBottom:4 }}/>
+          )}
+          {m.type==="link" && (
+            <div style={{ marginBottom:4 }}>
+              <a href={m.text} target="_blank" rel="noreferrer" style={{ color:isMe?"#fff":"var(--accent)", fontSize:12, wordBreak:"break-all" }}>
+                {m.linkType==="youtube"?"🎬":m.linkType==="instagram"?"📸":m.linkType==="tiktok"?"🎵":"🔗"} {m.text.length>50?m.text.slice(0,50)+"...":m.text}
+              </a>
+            </div>
+          )}
+          {m.text && m.type!=="link" && <div style={{ fontSize:13 }}>{m.text}</div>}
+          <div style={{ display:"flex", justifyContent:"flex-end", alignItems:"center", gap:4, marginTop:2 }}>
+            <span style={{ fontSize:10, color:isMe?"rgba(255,255,255,.55)":"var(--muted)" }}>{m.ts}</span>
+            {isMe && <span style={{ fontSize:11, color:m.read?"#60a5fa":"rgba(255,255,255,.4)" }}>{m.read?"✓✓":"✓"}</span>}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="fade" style={{ display:"flex", flexDirection:"column", height:"calc(100vh - 120px)" }}>
       <H size={20} style={{ marginBottom:12 }}>Mensajes</H>
 
-      {pairs.length > 1 && (
-        <div style={{ display:"flex", gap:6, overflowX:"auto", paddingBottom:8, marginBottom:10 }}>
-          {pairs.map(p => {
-            const pTheme = getTheme(p);
-            const pKey = getKey(currentUser.id, p.id);
-            const unread = (store.messages[pKey]||[]).filter(m=>m.from===p.id).length;
-            return (
-              <button key={p.id} onClick={()=>setSelectedId(p.id)} style={{ flexShrink:0, display:"flex", alignItems:"center", gap:8, background:selectedId===p.id?"var(--dim)":"var(--card)", border:`1px solid ${selectedId===p.id?"var(--accent)":"var(--border)"}`, borderRadius:10, padding:"8px 12px" }}>
-                <Avatar name={p.name} color={pTheme.accent} size={28} photo={p.photo}/>
-                <div style={{ textAlign:"left" }}>
-                  <div style={{ fontSize:12, fontWeight:600, color:selectedId===p.id?"var(--accent)":"var(--text)" }}>{p.name.split(" ")[0]}</div>
-                  {unread > 0 && <div style={{ fontSize:10, color:"var(--accent)" }}>{unread} msgs</div>}
-                </div>
+      {/* Contact list: last 3 + search + show all */}
+      {allPairs.length > 0 && (
+        <div style={{ marginBottom:10 }}>
+          {allPairs.length > 3 && (
+            <div style={{ position:"relative", marginBottom:8 }}>
+              <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Buscar por nombre..." style={{ fontSize:12, padding:"6px 12px" }}/>
+            </div>
+          )}
+          <div style={{ display:"flex", gap:6, overflowX:"auto", paddingBottom:4 }}>
+            {visiblePairs.map(p=>{
+              const pTheme = getTheme(p);
+              const pKey = getKey(currentUser.id, p.id);
+              const unread = (store.messages[pKey]||[]).filter(m=>m.from===p.id&&!m.read).length;
+              const lastMsg = (store.messages[pKey]||[]).at(-1);
+              return (
+                <button key={p.id} onClick={()=>setSelectedId(p.id)} style={{
+                  flexShrink:0, display:"flex", alignItems:"center", gap:8,
+                  background:selectedId===p.id?"var(--dim)":"var(--card)",
+                  border:`1px solid ${selectedId===p.id?"var(--accent)":"var(--border)"}`,
+                  borderRadius:10, padding:"8px 12px", maxWidth:160, position:"relative",
+                }}>
+                  <div style={{ position:"relative" }}>
+                    <Avatar name={p.name} color={pTheme.accent} size={28} photo={p.photo}/>
+                    {unread>0 && <span style={{ position:"absolute", top:-4, right:-4, width:16, height:16, background:"var(--accent)", borderRadius:"50%", fontSize:9, fontWeight:700, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center" }}>{unread}</span>}
+                  </div>
+                  <div style={{ textAlign:"left", minWidth:0 }}>
+                    <div style={{ fontSize:12, fontWeight:600, color:selectedId===p.id?"var(--accent)":"var(--text)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{p.name.split(" ")[0]}</div>
+                    {lastMsg && <div style={{ fontSize:10, color:"var(--sub)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", maxWidth:80 }}>{lastMsg.text||"📎 Archivo"}</div>}
+                  </div>
+                </button>
+              );
+            })}
+            {hasMore && !showAll && (
+              <button onClick={()=>setShowAll(true)} style={{ flexShrink:0, background:"var(--surface)", border:"1px dashed var(--border)", borderRadius:10, padding:"8px 14px", fontSize:12, color:"var(--sub)" }}>
+                +{filteredPairs.length-3} más
               </button>
-            );
-          })}
+            )}
+            {showAll && filteredPairs.length>3 && (
+              <button onClick={()=>setShowAll(false)} style={{ flexShrink:0, background:"var(--surface)", border:"1px dashed var(--border)", borderRadius:10, padding:"8px 14px", fontSize:12, color:"var(--sub)" }}>
+                Menos ↑
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -2376,28 +2545,42 @@ function MessagesModule({ currentUser }) {
           <>
             <div style={{ padding:"10px 14px", borderBottom:"1px solid var(--border)", display:"flex", alignItems:"center", gap:10 }}>
               <Avatar name={selUser.name} color={selTheme.accent} size={30} photo={selUser.photo}/>
-              <div>
+              <div style={{ flex:1 }}>
                 <div style={{ fontWeight:600, fontSize:13 }}>{selUser.name}</div>
                 <div style={{ fontSize:11, color:"var(--green)" }}>● En línea</div>
               </div>
             </div>
             <div ref={chatRef} style={{ flex:1, overflowY:"auto", padding:14, display:"flex", flexDirection:"column", gap:8 }}>
-              {msgs.map((m,i) => {
-                const isMe = m.from === currentUser.id;
-                return (
-                  <div key={i} style={{ display:"flex", justifyContent:isMe?"flex-end":"flex-start" }}>
-                    <div style={{ maxWidth:"76%", background:isMe?"var(--accent)":"var(--surface)", borderRadius:isMe?"12px 12px 2px 12px":"12px 12px 12px 2px", padding:"8px 12px" }}>
-                      <div style={{ fontSize:13 }}>{m.text}</div>
-                      <div style={{ fontSize:10, color:isMe?"rgba(255,255,255,.55)":"var(--muted)", marginTop:2, textAlign:"right" }}>{m.ts}</div>
-                    </div>
-                  </div>
-                );
-              })}
-              {msgs.length === 0 && <div style={{ textAlign:"center", color:"var(--sub)", fontSize:13, padding:24 }}>No hay mensajes todavía. ¡Empezá la conversación!</div>}
+              {msgs.map(renderMessage)}
+              {msgs.length===0 && <div style={{ textAlign:"center", color:"var(--sub)", fontSize:13, padding:24 }}>No hay mensajes todavía. ¡Empezá la conversación!</div>}
             </div>
-            <div style={{ padding:10, borderTop:"1px solid var(--border)", display:"flex", gap:8 }}>
-              <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Escribí un mensaje..." style={{ flex:1 }}/>
-              <Btn onClick={send} style={{ padding:"8px 14px", flexShrink:0 }}>→</Btn>
+
+            {/* Link input */}
+            {linkMode && (
+              <div style={{ padding:"8px 10px", borderTop:"1px solid var(--border)", display:"flex", gap:6 }}>
+                <input value={linkInput} onChange={e=>setLinkInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendLink()} placeholder="Pegá el link de YouTube, Instagram o TikTok..." style={{ flex:1, fontSize:12 }}/>
+                <Btn onClick={sendLink} style={{ padding:"6px 12px", fontSize:12 }}>Enviar</Btn>
+                <Btn v="ghost" onClick={()=>setLinkMode(false)} style={{ padding:"6px 10px", fontSize:12 }}>×</Btn>
+              </div>
+            )}
+
+            {/* Input bar */}
+            <div style={{ padding:"8px 10px", borderTop:"1px solid var(--border)", display:"flex", gap:6, alignItems:"center" }}>
+              <button onClick={()=>{setMediaMode(!mediaMode);setLinkMode(false);}} style={{ background:"transparent", border:"none", fontSize:20, color:"var(--sub)", cursor:"pointer", padding:"0 2px" }} title="Adjuntar imagen/video">📎</button>
+              <button onClick={()=>{setLinkMode(!linkMode);setMediaMode(false);}} style={{ background:"transparent", border:"none", fontSize:18, color:"var(--sub)", cursor:"pointer", padding:"0 2px" }} title="Pegar link">🔗</button>
+              <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Escribí un mensaje..." style={{ flex:1, fontSize:13 }}/>
+              <Btn onClick={send} style={{ padding:"7px 14px", flexShrink:0 }}>→</Btn>
+              <input ref={mediaRef} type="file" accept="image/*,video/*" style={{ display:"none" }} onChange={handleMedia}/>
+              {mediaMode && (
+                <div style={{ position:"absolute", bottom:70, left:16, right:16, background:"var(--card)", border:"1px solid var(--border)", borderRadius:12, padding:12, display:"flex", gap:10, zIndex:10 }}>
+                  <button onClick={()=>{mediaRef.current.click();setMediaMode(false);}} style={{ flex:1, background:"var(--surface)", border:"1px solid var(--border)", borderRadius:9, padding:"12px 8px", cursor:"pointer", fontSize:13 }}>
+                    <div style={{ fontSize:24, marginBottom:4 }}>🖼️</div>Imagen/Video
+                  </button>
+                  <button onClick={()=>{setLinkMode(true);setMediaMode(false);}} style={{ flex:1, background:"var(--surface)", border:"1px solid var(--border)", borderRadius:9, padding:"12px 8px", cursor:"pointer", fontSize:13 }}>
+                    <div style={{ fontSize:24, marginBottom:4 }}>🔗</div>Link externo
+                  </button>
+                </div>
+              )}
             </div>
           </>
         ) : (
@@ -2640,43 +2823,113 @@ function SADashboard() {
         {coaches.length===0 && <div style={{ fontSize:13, color:"var(--sub)", textAlign:"center", padding:16 }}>No hay entrenadores aún</div>}
       </Card>
 
-      {/* Pizarra de notas */}
-      <Card>
-        <div style={{ fontSize:11, color:"var(--sub)", fontWeight:600, letterSpacing:1, marginBottom:10 }}>📌 PIZARRA DE NOTAS</div>
-        <div style={{ fontSize:11, color:"var(--muted)", marginBottom:10 }}>Arrastrá las notas para reordenarlas</div>
-        <div style={{ display:"flex", flexDirection:"column", gap:6, marginBottom:12 }}>
-          {notes.map(n => (
-            <div
-              key={n.id}
-              draggable
-              onDragStart={()=>onDragStart(n.id)}
-              onDragEnd={onDragEnd}
-              onDragOver={e=>{e.preventDefault();setDragOver(n.id);}}
-              onDrop={()=>onDrop(n.id)}
-              style={{
-                display:"flex", alignItems:"center", gap:8, padding:"10px 12px", borderRadius:9,
-                background:n.color+"22", border:`1.5px solid ${dragOver===n.id?n.color:"transparent"}`,
-                borderLeft:`4px solid ${n.color}`, cursor:"grab", opacity:dragId===n.id?.5:1,
-                transition:"opacity .15s",
-              }}
-            >
-              <span style={{ fontSize:14, color:"var(--muted)", flexShrink:0 }}>⠿</span>
-              <span style={{ flex:1, fontSize:13 }}>{n.text}</span>
-              <button onClick={()=>removeNote(n.id)} style={{ background:"none", border:"none", color:"var(--muted)", fontSize:16, cursor:"pointer", padding:"0 2px" }}>×</button>
-            </div>
+      <PizarraBoard/>
+    </div>
+  );
+}
+
+// ─── PIZARRA COMPONENT (SA + Coach) ──────────────────────────────────────────
+function PizarraBoard() {
+  const [notes, setNotes] = useState([
+    { id:1, text:"Revisar vencimiento de Sofía el 30/06", color:"#f59e0b", x:20, y:20 },
+    { id:2, text:"Onboarding nuevo entrenador", color:"#3b82f6", x:180, y:30 },
+    { id:3, text:"Llamar a proveedor de suplementos", color:"#22c55e", x:60, y:160 },
+  ]);
+  const [newNote, setNewNote] = useState("");
+  const [noteColor, setNoteColor] = useState("#f59e0b");
+  const [editingId, setEditingId] = useState(null);
+  const [editText, setEditText] = useState("");
+  const [dragging, setDragging] = useState(null);
+  const [dragOffset, setDragOffset] = useState({x:0,y:0});
+  const boardRef = useRef();
+
+  const NOTE_COLORS = ["#f59e0b","#3b82f6","#22c55e","#e63946","#7c3aed","#f97316","#ec4899","#06b6d4"];
+
+  const addNote = () => {
+    if (!newNote.trim()) return;
+    const x = 20 + (notes.length%4)*160;
+    const y = 20 + Math.floor(notes.length/4)*140;
+    setNotes(p=>[...p,{id:Date.now(),text:newNote.trim(),color:noteColor,x,y}]);
+    setNewNote("");
+  };
+
+  const startDrag = (e, id) => {
+    e.preventDefault();
+    const note = notes.find(n=>n.id===id);
+    const board = boardRef.current.getBoundingClientRect();
+    const clientX = e.touches?e.touches[0].clientX:e.clientX;
+    const clientY = e.touches?e.touches[0].clientY:e.clientY;
+    setDragging(id);
+    setDragOffset({x:clientX-board.left-note.x, y:clientY-board.top-note.y});
+  };
+
+  const onDragMove = (e) => {
+    if (!dragging||!boardRef.current) return;
+    const board = boardRef.current.getBoundingClientRect();
+    const clientX = e.touches?e.touches[0].clientX:e.clientX;
+    const clientY = e.touches?e.touches[0].clientY:e.clientY;
+    const x = Math.max(0, Math.min(clientX-board.left-dragOffset.x, board.width-140));
+    const y = Math.max(0, Math.min(clientY-board.top-dragOffset.y, board.height-100));
+    setNotes(p=>p.map(n=>n.id===dragging?{...n,x,y}:n));
+  };
+
+  return (
+    <div>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+        <div style={{ fontSize:11, color:"var(--sub)", fontWeight:600, letterSpacing:1 }}>📌 PIZARRA</div>
+        <div style={{ display:"flex", gap:5, alignItems:"center" }}>
+          {NOTE_COLORS.map(col=>(
+            <button key={col} onClick={()=>setNoteColor(col)} style={{ width:16, height:16, borderRadius:3, background:col, border:noteColor===col?"2px solid var(--text)":"1.5px solid transparent", cursor:"pointer" }}/>
           ))}
-          {notes.length===0 && <div style={{ textAlign:"center", color:"var(--muted)", fontSize:13, padding:16 }}>Sin notas. ¡Agregá una!</div>}
         </div>
-        <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-          <div style={{ display:"flex", gap:4 }}>
-            {NOTE_COLORS.map(col => (
-              <button key={col} onClick={()=>setNoteColor(col)} style={{ width:18, height:18, borderRadius:"50%", background:col, border:noteColor===col?"2px solid var(--text)":"2px solid transparent", cursor:"pointer" }}/>
-            ))}
+      </div>
+      <div style={{ display:"flex", gap:6, marginBottom:10 }}>
+        <input value={newNote} onChange={e=>setNewNote(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addNote()} placeholder="Nueva nota..." style={{ flex:1, fontSize:12, padding:"6px 10px" }}/>
+        <Btn onClick={addNote} style={{ padding:"6px 14px", fontSize:12 }}>+</Btn>
+      </div>
+      <div
+        ref={boardRef}
+        onMouseMove={onDragMove} onTouchMove={onDragMove}
+        onMouseUp={()=>setDragging(null)} onTouchEnd={()=>setDragging(null)}
+        style={{ position:"relative", height:320, background:"var(--surface)", borderRadius:12, border:"1px solid var(--border)", overflow:"hidden", userSelect:"none" }}
+      >
+        {notes.length===0 && <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", color:"var(--muted)", fontSize:13 }}>La pizarra está vacía — agregá tu primera nota</div>}
+        {notes.map(n=>(
+          <div
+            key={n.id}
+            onMouseDown={e=>startDrag(e,n.id)}
+            onTouchStart={e=>startDrag(e,n.id)}
+            style={{
+              position:"absolute", left:n.x, top:n.y,
+              width:140, minHeight:80,
+              background:n.color+"ee", borderRadius:8,
+              padding:"8px 10px", cursor:dragging===n.id?"grabbing":"grab",
+              boxShadow:dragging===n.id?"0 8px 24px #0008":"0 2px 8px #0004",
+              transition:dragging===n.id?"none":"box-shadow .2s",
+              zIndex:dragging===n.id?10:1,
+            }}
+          >
+            <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:4 }}>
+              <button onMouseDown={e=>e.stopPropagation()} onClick={()=>setNotes(p=>p.filter(x=>x.id!==n.id))} style={{ background:"rgba(0,0,0,.2)", border:"none", borderRadius:4, color:"#fff", fontSize:12, width:18, height:18, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
+            </div>
+            {editingId===n.id ? (
+              <textarea
+                autoFocus
+                value={editText}
+                onChange={e=>setEditText(e.target.value)}
+                onBlur={()=>{setNotes(p=>p.map(x=>x.id===n.id?{...x,text:editText}:x));setEditingId(null);}}
+                onMouseDown={e=>e.stopPropagation()}
+                style={{ width:"100%", background:"transparent", border:"none", fontSize:12, color:"#000", resize:"none", outline:"none", fontFamily:"'DM Sans',sans-serif" }}
+              />
+            ) : (
+              <div onDoubleClick={()=>{setEditingId(n.id);setEditText(n.text);}} style={{ fontSize:12, color:"#1a1a2e", lineHeight:1.4, wordBreak:"break-word" }}>
+                {n.text}
+                <div style={{ fontSize:10, color:"rgba(0,0,0,.4)", marginTop:4 }}>Doble click para editar</div>
+              </div>
+            )}
           </div>
-          <input value={newNote} onChange={e=>setNewNote(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addNote()} placeholder="Nueva nota..." style={{ flex:1, fontSize:12, padding:"6px 10px" }}/>
-          <Btn onClick={addNote} style={{ padding:"6px 12px", fontSize:12, flexShrink:0 }}>+ Agregar</Btn>
-        </div>
-      </Card>
+        ))}
+      </div>
     </div>
   );
 }
@@ -2767,6 +3020,8 @@ function CoachDashboard({ currentUser, onNavigate }) {
           })
         }
       </Card>
+
+      <PizarraBoard/>
 
       {/* Sin rutina warning */}
       {alumnosSinRutina.length > 0 && (
@@ -2920,6 +3175,8 @@ function ConfigModule({ currentUser, onLogout, onUserUpdate }) {
     pesoInicial: currentUser.pesoInicial || "",
     pesoObj:     currentUser.pesoObj || "",
     altura:      currentUser.altura || "",
+    themePreset:   currentUser.themePreset || "d-blue",
+    themeInverted: currentUser.themeInverted || false,
   });
   const [pwForm, setPwForm] = useState({ current:"", next:"", confirm:"" });
   const [saved, setSaved]   = useState(false);
@@ -2934,7 +3191,13 @@ function ConfigModule({ currentUser, onLogout, onUserUpdate }) {
     : null;
 
   const saveProfile = () => {
-    onUserUpdate({ ...currentUser, ...form });
+    const updated = { ...currentUser, ...form };
+    onUserUpdate(updated);
+    // Apply theme immediately
+    if (form.themePreset) {
+      const preset = form.themeInverted ? getInverted(form.themePreset) : THEME_PRESETS.find(p=>p.id===form.themePreset);
+      if (preset) applyThemePreset(preset);
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -2950,10 +3213,10 @@ function ConfigModule({ currentUser, onLogout, onUserUpdate }) {
 
   const roleLabel = { superadmin:"⭐ SuperAdmin", coach:"🔴 Entrenador", alumno:"Alumno" };
   const sections = isAlumno
-    ? ["perfil","cuerpo","unidades","seguridad"]
-    : ["perfil","unidades","seguridad"];
+    ? ["perfil","cuerpo","unidades","diseno","seguridad"]
+    : ["perfil","unidades","diseno","seguridad"];
 
-  const sectionLabels = { perfil:"👤 "+t("perfil"), cuerpo:"📍 "+t("puntoPartida"), unidades:"⚖️ "+t("unidades"), seguridad:"🔒 "+t("seguridad") };
+  const sectionLabels = { perfil:"👤 "+t("perfil"), cuerpo:"📍 "+t("puntoPartida"), unidades:"⚖️ "+t("unidades"), diseno:"🎨 Diseño", seguridad:"🔒 "+t("seguridad") };
 
   return (
     <div className="fade">
@@ -3089,6 +3352,58 @@ function ConfigModule({ currentUser, onLogout, onUserUpdate }) {
         </Card>
       )}
 
+      {/* ── DISEÑO ── */}
+      {section === "diseno" && (
+        <Card>
+          <div style={{ fontSize:13, fontWeight:600, marginBottom:4 }}>Elegí tu combinación de colores</div>
+          <div style={{ fontSize:12, color:"var(--sub)", marginBottom:14 }}>Hacé click una vez para aplicar. Hacé click de nuevo para invertir los colores.</div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:16 }}>
+            {THEME_PRESETS.map(p => {
+              const isActive = form.themePreset===p.id || form.themePreset===(p.id+"-inv");
+              const isInverted = form.themeInverted && (form.themePreset===p.id||form.themePreset===(p.id+"-inv"));
+              const displayPreset = isActive && isInverted ? (getInverted(p.id)||p) : p;
+              return (
+                <button key={p.id} onClick={()=>{
+                  if (form.themePreset===p.id && !form.themeInverted) {
+                    setForm(prev=>({...prev,themePreset:p.id,themeInverted:true}));
+                    const inv = getInverted(p.id);
+                    if (inv) applyThemePreset(inv);
+                  } else if (form.themePreset===p.id && form.themeInverted) {
+                    setForm(prev=>({...prev,themePreset:p.id,themeInverted:false}));
+                    applyThemePreset(p);
+                  } else {
+                    setForm(prev=>({...prev,themePreset:p.id,themeInverted:false}));
+                    applyThemePreset(p);
+                  }
+                }} style={{
+                  width:60, height:60, borderRadius:10, overflow:"hidden", cursor:"pointer",
+                  border:`3px solid ${form.themePreset===p.id?"var(--accent)":"transparent"}`,
+                  position:"relative", padding:0,
+                }}>
+                  {p.split ? (
+                    <div style={{ width:"100%", height:"100%", display:"flex" }}>
+                      <div style={{ flex:1, background: form.themeInverted&&form.themePreset===p.id?"#ffffff":"#0a0a0f" }}/>
+                      <div style={{ flex:1, background: form.themeInverted&&form.themePreset===p.id?"#0a0a0f":"#ffffff" }}/>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ width:"100%", height:"100%", background:isActive&&isInverted?displayPreset.bg:p.bg }}/>
+                      <div style={{ position:"absolute", bottom:6, right:6, width:18, height:18, borderRadius:4, background:isActive&&isInverted?displayPreset.accent:p.accent }}/>
+                    </>
+                  )}
+                  {form.themePreset===p.id && <div style={{ position:"absolute", top:2, right:2, fontSize:10, background:"var(--accent)", color:"#fff", borderRadius:"50%", width:14, height:14, display:"flex", alignItems:"center", justifyContent:"center" }}>✓</div>}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ fontSize:11, color:"var(--sub)", marginBottom:14 }}>
+            Tema actual: <span style={{ fontWeight:700, color:"var(--accent)" }}>{THEME_PRESETS.find(p=>p.id===form.themePreset)?.label || "Por defecto"}{form.themeInverted?" (invertido)":""}</span>
+          </div>
+          {saved ? <div style={{ background:"#22c55e11", border:"1px solid #22c55e33", borderRadius:9, padding:10, color:"#22c55e", fontWeight:600, textAlign:"center" }}>✓ Guardado</div>
+                 : <Btn onClick={saveProfile} full>Guardar diseño</Btn>}
+        </Card>
+      )}
+
       {/* ── SEGURIDAD ── */}
       {section === "seguridad" && (
         <Card>
@@ -3117,6 +3432,17 @@ function AppShell({ currentUser: initUser, onLogout }) {
   const { store, dispatch } = useStore();
   const [currentUser, setCurrentUserLocal] = useState(initUser);
   const theme = getTheme(currentUser);
+
+  // Apply user's saved theme preset on mount and change
+  useEffect(() => {
+    const presetId = currentUser.themePreset;
+    const inverted = currentUser.themeInverted;
+    if (presetId) {
+      const base = THEME_PRESETS.find(t=>t.id===presetId);
+      const preset = inverted ? getInverted(presetId) : base;
+      if (preset) applyThemePreset(preset);
+    }
+  }, [currentUser.themePreset, currentUser.themeInverted]);
   const isSuspendedInit = initUser.suspended === true;
   const [page, setPage] = useState(isSuspendedInit ? "messages" : "inicio");
   const [sideOpen, setSideOpen] = useState(false);
@@ -3134,6 +3460,7 @@ function AppShell({ currentUser: initUser, onLogout }) {
     setTargetAlumno(alumnoId);
   };
 
+  const t = useLang(currentUser);
   const isAlumno   = currentUser.role === "alumno";
   const isCoach    = currentUser.role === "coach";
   const isSA       = currentUser.role === "superadmin";
