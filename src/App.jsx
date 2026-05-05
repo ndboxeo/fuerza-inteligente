@@ -80,7 +80,8 @@ const AppContext = createContext(null);
 const useStore = () => useContext(AppContext);
 const useLang = (user) => {
   const code = LANG_CODES[user?.lang] || "es";
-  return (key) => T[code]?.[key] || T.es[key] || key;
+  const tObj = T[code] || T.es;
+  return (key) => tObj?.[key] ?? T.es?.[key] ?? key;
 };
 const useUnits = (user) => user?.units || "kg";
 
@@ -1001,6 +1002,7 @@ function ObjectivesSelector({ value, onChange }) {
 
 function UsersModule({ currentUser }) {
   const { store, dispatch } = useStore();
+  const t = useLang(currentUser || { lang:'Español' });
   const theme = getTheme(currentUser);
   const [modal, setModal] = useState(null); // null | "add" | "edit"
   const [editing, setEditing]   = useState(null);
@@ -1673,7 +1675,7 @@ function ImportModule({ alumnoId, onImport, onClose }) {
 // ───────────────────────────────────────────────────────────────────────────────
 function RoutinesModule({ currentUser, targetAlumnoId }) {
   const { store, dispatch } = useStore();
-  const t = useLang(currentUser);
+  const t = useLang(currentUser || { lang:'Español' });
   const isCoach  = currentUser.role === "coach";
   const isAlumno = currentUser.role === "alumno";
   const alumnoId = targetAlumnoId || (isAlumno ? currentUser.id : null);
@@ -2464,6 +2466,7 @@ function ProgressModule({ currentUser, targetAlumnoId }) {
 // ───────────────────────────────────────────────────────────────────────────────
 function MessagesModule({ currentUser }) {
   const { store, dispatch } = useStore();
+  const t = useLang(currentUser || { lang:'Español' });
   const [input, setInput] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [search, setSearch] = useState("");
@@ -2783,7 +2786,7 @@ function OverviewModule({ currentUser, onNavigate }) {
 // ─── SUPERADMIN DASHBOARD ─────────────────────────────────────────────────────
 function SADashboard({ currentUser }) {
   const { store } = useStore();
-  const t = useLang(currentUser);
+  const t = useLang(currentUser || { lang:'Español' });
   const [notes, setNotes] = useState([
     { id:1, text:"Revisar vencimiento de Sofía el 30/06", color:"#f59e0b" },
     { id:2, text:"Pendiente: onboarding de nuevo entrenador", color:"#3b82f6" },
@@ -2837,7 +2840,7 @@ function SADashboard({ currentUser }) {
       {/* Metrics */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:14 }}>
         {[
-          { icon:"🏋️", label:t("entrenadores")+" "+t("activos","activos"), value:coaches.filter(c=>!c.suspended).length, color:"var(--accent)" },
+          { icon:"🏋️", label:t("entrenadores")+" "+t("activos"), value:coaches.filter(c=>!c.suspended).length, color:"var(--accent)" },
           { icon:"👥", label:t("alumnosActivos"),       value:alumnos.filter(a=>!a.suspended).length, color:"var(--green)" },
           { icon:"⏸",  label:t("cuentasSuspendidas"),   value:suspended.length,                       color:"var(--orange)" },
           { icon:"⏰",  label:t("vencen30"),     value:expiring.length,                        color:"var(--yellow)" },
@@ -2913,13 +2916,14 @@ function SADashboard({ currentUser }) {
         {coaches.length===0 && <div style={{ fontSize:13, color:"var(--sub)", textAlign:"center", padding:16 }}>No hay entrenadores aún</div>}
       </Card>
 
-      <PizarraBoard/>
+      <PizarraBoard currentUser={currentUser}/>
     </div>
   );
 }
 
 // ─── PIZARRA COMPONENT (SA + Coach) ──────────────────────────────────────────
-function PizarraBoard() {
+function PizarraBoard({ currentUser }) {
+  const t = useLang(currentUser || { lang:'Español' });
   const [notes, setNotes] = useState([
     { id:1, text:"Revisar vencimiento de Sofía el 30/06", color:"#f59e0b", x:20, y:20 },
     { id:2, text:"Onboarding nuevo entrenador", color:"#3b82f6", x:180, y:30 },
@@ -3112,7 +3116,7 @@ function CoachDashboard({ currentUser, onNavigate }) {
         }
       </Card>
 
-      <PizarraBoard/>
+      <PizarraBoard currentUser={currentUser}/>
 
       {/* Sin rutina warning */}
       {alumnosSinRutina.length > 0 && (
@@ -3253,7 +3257,7 @@ function InicioModule({ currentUser, onNavigate }) {
 
 function ConfigModule({ currentUser, onLogout, onUserUpdate }) {
   const theme = getTheme(currentUser);
-  const t = useLang(currentUser);
+  const t = useLang(currentUser || { lang:'Español' });
   const isSA = currentUser.role === "superadmin";
   const isAlumno = currentUser.role === "alumno";
   const [form, setForm] = useState({
@@ -3580,13 +3584,13 @@ function AppShell({ currentUser: initUser, onLogout }) {
           { id:"config",   icon:"⚙️", label:t("config") },
         ]
       : [
-          { id:"inicio",    icon:"⊞",  label:"Inicio" },
-          { id:"training",  icon:"🏋️", label:"Entreno" },
-          { id:"progress",  icon:"📈", label:"Progreso" },
-          { id:"routines",  icon:"📋", label:"Rutinas" },
-          { id:"metrics",   icon:"📊", label:"Métricas" },
-          { id:"messages",  icon:"💬", label:"Mensajes", badge: unreadCount },
-          { id:"config",    icon:"⚙️", label:"Config" },
+          { id:"inicio",    icon:"⊞",  label:t("inicio") },
+          { id:"training",  icon:"🏋️", label:t("entreno") },
+          { id:"progress",  icon:"📈", label:t("progreso") },
+          { id:"routines",  icon:"📋", label:t("rutinas") },
+          { id:"metrics",   icon:"📊", label:t("metricas") },
+          { id:"messages",  icon:"💬", label:t("mensajes"), badge: unreadCount },
+          { id:"config",    icon:"⚙️", label:t("config") },
         ]
     : isCoach
     ? [
