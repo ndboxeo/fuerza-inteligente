@@ -1,6 +1,7 @@
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// FUERZA INTELIGENTE V7 — Arquitectura Modular
+// FUERZA INTELIGENTE V7.1 — Arquitectura Modular
+// Build: 20260505_0822
 // ═══════════════════════════════════════════════════════════════════════════════
 //
 //  MÓDULOS (cada bloque es independiente):
@@ -131,9 +132,9 @@ const INITIAL_STORE = {
     { id:"sa1", role:"superadmin", name:"Admin Master", email:"admin@fi.com",  password:"admin123", gender:null,     coachId:null,  active:true, photo:null, phone:"", birthdate:"" },
     { id:"c1", suspended:false, suspendedAt:null, themePreset:"d-red", themeInverted:false, role:"coach", name:"Martín López", email:"martin@fi.com", password:"1234", gender:null, coachId:"sa1", active:true, photo:null, phone:"+54 11 1234-5678", birthdate:"1988-03-15", alumnoLimit:null, expiresAt:null, lang:"es", units:"kg" },
     { id:"c2", suspended:false, suspendedAt:null, themePreset:"d-red", themeInverted:false, role:"coach", name:"Sofía Ruiz", email:"sofia@fi.com", password:"1234", gender:"female", coachId:"sa1", active:true, photo:null, phone:"+54 11 9876-5432", birthdate:"1992-07-22", alumnoLimit:20, expiresAt:null, lang:"es", units:"kg" },
-    { id:"a1", suspended:false, suspendedAt:null, themePreset:"d-blue", themeInverted:false, role:"alumno", name:"Juan Pérez", email:"juan@fi.com", password:"1234", gender:"male", coachId:"c1", active:true, photo:null, phone:"+54 11 5555-1234", birthdate:"1995-11-08", objectives:[{id:"fuerza_max",priority:"principal",completed:false},{id:"hipertrofia",priority:"secundario",completed:false},{id:"core",priority:"secundario",completed:false}], pesoInicial:82, pesoObj:88, altura:178, lang:"es", units:"kg", registeredAt:"2024-11-08" },
+    { id:"a1", suspended:false, suspendedAt:null, themePreset:"d-cyan", themeInverted:false, role:"alumno", name:"Juan Pérez", email:"juan@fi.com", password:"1234", gender:"male", coachId:"c1", active:true, photo:null, phone:"+54 11 5555-1234", birthdate:"1995-11-08", objectives:[{id:"fuerza_max",priority:"principal",completed:false},{id:"hipertrofia",priority:"secundario",completed:false},{id:"core",priority:"secundario",completed:false}], pesoInicial:82, pesoObj:88, altura:178, lang:"es", units:"kg", registeredAt:"2024-11-08" },
     { id:"a2", suspended:false, suspendedAt:null, themePreset:"d-purple", themeInverted:false, role:"alumno", name:"Laura García", email:"laura@fi.com", password:"1234", gender:"female", coachId:"c1", active:true, photo:null, phone:"+54 11 4444-9999", birthdate:"1998-02-14", objectives:[{id:"desc_grasa",priority:"principal",completed:false},{id:"hipertrofia",priority:"secundario",completed:false}], pesoInicial:65, pesoObj:58, altura:163, lang:"es", units:"kg", registeredAt:"2024-02-14" },
-    { id:"a3", suspended:false, suspendedAt:null, themePreset:"d-blue", themeInverted:false, role:"alumno", name:"Diego Torres", email:"diego@fi.com", password:"1234", gender:"male", coachId:"c2", active:true, photo:null, phone:"", birthdate:"1993-06-30", objectives:[], pesoInicial:null, pesoObj:null, altura:null, lang:"es", units:"kg", registeredAt:"2024-06-30" },
+    { id:"a3", suspended:false, suspendedAt:null, themePreset:"d-cyan", themeInverted:false, role:"alumno", name:"Diego Torres", email:"diego@fi.com", password:"1234", gender:"male", coachId:"c2", active:true, photo:null, phone:"", birthdate:"1993-06-30", objectives:[], pesoInicial:null, pesoObj:null, altura:null, lang:"es", units:"kg", registeredAt:"2024-06-30" },
   ],
   // Rutinas por alumno
   routines: {
@@ -425,37 +426,33 @@ function StoreProvider({ children }) {
 // THEME PRESETS — 11 cuadraditos (5 dark + 5 light + 1 split)
 // ───────────────────────────────────────────────────────────────────────────────
 const THEME_PRESETS = [
-  // Dark themes (fondo oscuro + acento color)
-  { id:"d-red",    bg:"#0a0a0f", surface:"#13131a", card:"#16161f", text:"#e2e2ee", sub:"#7b7b9a", border:"#22223a", accent:"#e63946", label:"Negro / Rojo",    dark:true  },
-  { id:"d-blue",   bg:"#0a0a0f", surface:"#13131a", card:"#16161f", text:"#e2e2ee", sub:"#7b7b9a", border:"#22223a", accent:"#2563eb", label:"Negro / Azul",    dark:true  },
-  { id:"d-purple", bg:"#0a0a0f", surface:"#13131a", card:"#16161f", text:"#e2e2ee", sub:"#7b7b9a", border:"#22223a", accent:"#7c3aed", label:"Negro / Violeta", dark:true  },
-  { id:"d-green",  bg:"#0a0a0f", surface:"#13131a", card:"#16161f", text:"#e2e2ee", sub:"#7b7b9a", border:"#22223a", accent:"#059669", label:"Negro / Verde",   dark:true  },
-  { id:"d-orange", bg:"#0a0a0f", surface:"#13131a", card:"#16161f", text:"#e2e2ee", sub:"#7b7b9a", border:"#22223a", accent:"#f97316", label:"Negro / Naranja", dark:true  },
-  // Light themes (fondo claro + acento color)
-  { id:"l-red",    bg:"#f8f8fc", surface:"#ffffff", card:"#ffffff", text:"#1a1a2e", sub:"#6b6b8a", border:"#e0e0f0", accent:"#e63946", label:"Blanco / Rojo",    dark:false },
-  { id:"l-blue",   bg:"#f8f8fc", surface:"#ffffff", card:"#ffffff", text:"#1a1a2e", sub:"#6b6b8a", border:"#e0e0f0", accent:"#2563eb", label:"Blanco / Azul",    dark:false },
-  { id:"l-purple", bg:"#f8f8fc", surface:"#ffffff", card:"#ffffff", text:"#1a1a2e", sub:"#6b6b8a", border:"#e0e0f0", accent:"#7c3aed", label:"Blanco / Violeta", dark:false },
-  { id:"l-green",  bg:"#f8f8fc", surface:"#ffffff", card:"#ffffff", text:"#1a1a2e", sub:"#6b6b8a", border:"#e0e0f0", accent:"#059669", label:"Blanco / Verde",   dark:false },
-  { id:"l-orange", bg:"#f8f8fc", surface:"#ffffff", card:"#ffffff", text:"#1a1a2e", sub:"#6b6b8a", border:"#e0e0f0", accent:"#f97316", label:"Blanco / Naranja", dark:false },
-  // Split: negro/blanco inverso
-  { id:"split",    bg:"#0a0a0f", surface:"#13131a", card:"#16161f", text:"#e2e2ee", sub:"#7b7b9a", border:"#22223a", accent:"#ffffff", label:"Negro / Blanco",   dark:true, split:true },
+  { id:"d-red",    bg:"#0a0a0f", surface:"#13131a", card:"#16161f", text:"#e2e2ee", sub:"#7b7b9a", border:"#22223a", accent:"#e63946", label:"Negro / Rojo",     dark:true },
+  { id:"d-cyan",   bg:"#0a0a0f", surface:"#13131a", card:"#16161f", text:"#e2e2ee", sub:"#7b7b9a", border:"#22223a", accent:"#06b6d4", label:"Negro / Celeste",   dark:true },
+  { id:"d-purple", bg:"#0a0a0f", surface:"#13131a", card:"#16161f", text:"#e2e2ee", sub:"#7b7b9a", border:"#22223a", accent:"#7c3aed", label:"Negro / Violeta",   dark:true },
+  { id:"d-green",  bg:"#0a0a0f", surface:"#13131a", card:"#16161f", text:"#e2e2ee", sub:"#7b7b9a", border:"#22223a", accent:"#059669", label:"Negro / Verde",     dark:true },
+  { id:"d-orange", bg:"#0a0a0f", surface:"#13131a", card:"#16161f", text:"#e2e2ee", sub:"#7b7b9a", border:"#22223a", accent:"#f97316", label:"Negro / Naranja",   dark:true },
+  { id:"d-yellow", bg:"#0a0a0f", surface:"#13131a", card:"#16161f", text:"#e2e2ee", sub:"#7b7b9a", border:"#22223a", accent:"#eab308", label:"Negro / Amarillo",  dark:true },
+  { id:"d-pink",   bg:"#0a0a0f", surface:"#13131a", card:"#16161f", text:"#e2e2ee", sub:"#7b7b9a", border:"#22223a", accent:"#ec4899", label:"Negro / Rosa",      dark:true },
 ];
 
-// Get inverted preset for a given preset id
+// Get inverted preset — swap bg and accent
 const getInverted = (presetId) => {
   const p = THEME_PRESETS.find(t=>t.id===presetId);
   if (!p) return null;
-  if (p.split) return { ...p, id:"split-inv", bg:"#ffffff", surface:"#f0f0f8", card:"#ffffff", text:"#0a0a0f", sub:"#6b6b8a", border:"#e0e0f0", accent:"#0a0a0f", label:"Blanco / Negro", split:true, inverted:true };
-  if (p.dark) {
-    // find light version
-    const colorKey = presetId.replace("d-","");
-    const light = THEME_PRESETS.find(t=>t.id===`l-${colorKey}`);
-    return light ? { ...light, id:presetId+"-inv", inverted:true } : null;
-  } else {
-    const colorKey = presetId.replace("l-","");
-    const dark = THEME_PRESETS.find(t=>t.id===`d-${colorKey}`);
-    return dark ? { ...dark, id:presetId+"-inv", inverted:true } : null;
-  }
+  // Inverted: accent becomes background, black becomes accent
+  return {
+    ...p,
+    id: presetId+"-inv",
+    bg:      p.accent,
+    surface: p.accent+"dd",
+    card:    p.accent+"cc",
+    text:    "#0a0a0f",
+    sub:     "#1a1a2e99",
+    border:  "#0a0a0f33",
+    accent:  "#0a0a0f",
+    label:   p.label.split(" / ").reverse().join(" / "),
+    inverted:true,
+  };
 };
 
 function applyThemePreset(preset) {
@@ -486,16 +483,39 @@ const T = {
     celular:"Número de celular", nacimiento:"Fecha de nacimiento",
     idioma:"Idioma", unidades:"Unidades de peso", rol:"Rol",
     pesoInicial:"Peso inicial", altura:"Altura", pesoObj:"Peso objetivo (opcional)",
-    imc:"IMC calculado", hoy:"Hola", descanso:"¡Día de descanso!",
-    sinRutinas:"Sin rutinas asignadas aún", nuevaRutina:"Nueva rutina",
-    importar:"Importar", guardarEnt:"Guardar entrenamiento 💾",
-    guardado:"✓ ¡Guardado con éxito!", registrarMetricas:"Registrar métricas",
+    imc:"IMC calculado", hoy:"Hola", descanso:t("diasDescanso"),
+    sinRutinas:t("sinRutinas"), nuevaRutina:"Nueva rutina",
+    importar:"Importar", guardarEnt:t("guardarEnt"),
+    guardado:t("guardado"), registrarMetricas:"Registrar métricas",
     progresoReciente:"Progreso reciente", objetivosCiclo:"Objetivos del ciclo",
     entrenamientoHoy:"Entrenamiento de hoy", empezar:"Empezar 🔥",
     repositorio:"Repositorio", asignarAlumno:"Asignar a alumno",
     copiarPersonalizar:"Copiar y personalizar", asignarOriginal:"Asignar original",
     diasEntrenamiento:"Días de entrenamiento", frecuenciaSemanal:"Frecuencia semanal",
     puntoPartida:"Punto de partida", kg:"kg", lbs:"lbs",
+    misAlumnos:"Mis Alumnos", hoyEntrenan:t("hoyEntrenan"),
+    sinRutinaAsig:t("sinRutinaAsig"), semana:"Semana",
+    nuevaRutinaRepo:"Nueva rutina en repositorio", asignar:"Asignar",
+    cancelar:"Cancelar", guardarCambios:"Guardar cambios",
+    misMetricas:t("misMetricas"), sinObjetivos:t("sinObjetivos"),
+    nuevoRegistro:t("nuevoRegistro"), sinRegistros:t("sinRegistros"),
+    evolucion:"Evolución", mejorMarca:"Mejor marca",
+    proyeccion1rm:"Proyección 1RM", mejoraTotal:t("mejoraTotal"),
+    sesiones:t("sesiones"), promedio:t("promedio"), tendencia:t("tendencia"),
+    creciendo:t("creciendo"), plan:"Plan actual", diasDescanso:t("diasDescanso"),
+    recuperate:t("recuperate"), verMetricas:t("verMetricas"),
+    pizarra:"Pizarra", nuevaNota:"Nueva nota...", entrenadores:"Entrenadores",
+    alumnosActivos:t("alumnosActivos"), cuentasSuspendidas:t("cuentasSuspendidas"),
+    vencen30:t("vencen30"), vencimientos:"Vencimientos", activo:"Activo",
+    suspendido:"Suspendido", vencido:"Vencido", ilimitado:"Ilimitado",
+    maxAlumnos:"Máx. alumnos", actuales:"actuales",
+    planActual:"Plan actual", bloque:"Bloque", semanas:"Semanas",
+    proximo:"Próximo", frecuencia:"Frecuencia", dias:"Días",
+    volumenSemanal:"Volumen semanal", rpePromedio:"RPE promedio",
+    completadas:"completadas", racha:"Racha", sinFallar:"sin fallar",
+    guardarEnt:t("guardarEnt"), planEjercicios:"Plan de ejercicios",
+    registroEnVivo:"Registro en vivo", rpeGlobal:t("rpeGlobal"),
+    ejercicios:"Ejercicios", serie:"Serie",
   },
   en: {
     lang:"English", inicio:"Home", entreno:"Training", progreso:"Progress",
@@ -509,33 +529,77 @@ const T = {
     imc:"Calculated BMI", hoy:"Hello", descanso:"Rest day!",
     sinRutinas:"No routines assigned yet", nuevaRutina:"New routine",
     importar:"Import", guardarEnt:"Save training 💾",
-    guardado:"✓ Saved successfully!", registrarMetricas:"Log metrics",
+    guardado:"✓ Saved!", registrarMetricas:"Log metrics",
     progresoReciente:"Recent progress", objetivosCiclo:"Cycle objectives",
     entrenamientoHoy:"Today's training", empezar:"Start 🔥",
     repositorio:"Repository", asignarAlumno:"Assign to student",
     copiarPersonalizar:"Copy & customize", asignarOriginal:"Assign original",
     diasEntrenamiento:"Training days", frecuenciaSemanal:"Weekly frequency",
     puntoPartida:"Starting point", kg:"kg", lbs:"lbs",
+    misAlumnos:"My Students", hoyEntrenan:"Training today",
+    sinRutinaAsig:"No routine assigned", semana:"Week",
+    nuevaRutinaRepo:"New routine in repository", asignar:"Assign",
+    cancelar:"Cancel", guardarCambios:"Save changes",
+    misMetricas:"My Metrics", sinObjetivos:"No objectives assigned",
+    nuevoRegistro:"+ New entry", sinRegistros:"No entries yet",
+    evolucion:"Evolution", mejorMarca:"Best mark",
+    proyeccion1rm:"1RM Projection", mejoraTotal:"Total improvement",
+    sesiones:"Sessions", promedio:"Average", tendencia:"Trend",
+    creciendo:"↑ Growing", plan:"Current plan", diasDescanso:"Rest day!",
+    recuperate:"Take time to recover.", verMetricas:"See metrics →",
+    pizarra:"Board", nuevaNota:"New note...", entrenadores:"Coaches",
+    alumnosActivos:"Active students", cuentasSuspendidas:"Suspended accounts",
+    vencen30:"Expiring in 30 days", vencimientos:"Expirations", activo:"Active",
+    suspendido:"Suspended", vencido:"Expired", ilimitado:"Unlimited",
+    maxAlumnos:"Max students", actuales:"current",
+    planActual:"Current plan", bloque:"Block", semanas:"Weeks",
+    proximo:"Next", frecuencia:"Frequency", dias:"Days",
+    volumenSemanal:"Weekly volume", rpePromedio:"Average RPE",
+    completadas:"completed", racha:"Streak", sinFallar:"no miss",
+    planEjercicios:"Exercise plan", registroEnVivo:"Live log",
+    rpeGlobal:"Overall RPE", ejercicios:"Exercises", serie:"Set",
   },
   pt: {
     lang:"Português", inicio:"Início", entreno:"Treino", progreso:"Progresso",
     metricas:"Métricas", rutinas:"Rotinas", mensajes:"Mensagens", config:"Config",
     resumen:"Resumo", alumnos:"Alunos", usuarios:"Usuários", overview:"Resumo",
-    cerrarSesion:"Sair", guardar:"Salvar alterações", perfil:"Perfil",
+    cerrarSesion:"Sair", guardar:"Salvar", perfil:"Perfil",
     seguridad:"Segurança", nombre:"Nome completo", email:"E-mail",
-    celular:"Número de celular", nacimiento:"Data de nascimento",
+    celular:"Celular", nacimiento:"Data de nascimento",
     idioma:"Idioma", unidades:"Unidades de peso", rol:"Função",
     pesoInicial:"Peso inicial", altura:"Altura", pesoObj:"Peso alvo (opcional)",
     imc:"IMC calculado", hoy:"Olá", descanso:"Dia de descanso!",
     sinRutinas:"Sem rotinas atribuídas", nuevaRutina:"Nova rotina",
     importar:"Importar", guardarEnt:"Salvar treino 💾",
-    guardado:"✓ Salvo com sucesso!", registrarMetricas:"Registrar métricas",
+    guardado:"✓ Salvo!", registrarMetricas:"Registrar métricas",
     progresoReciente:"Progresso recente", objetivosCiclo:"Objetivos do ciclo",
     entrenamientoHoy:"Treino de hoje", empezar:"Começar 🔥",
     repositorio:"Repositório", asignarAlumno:"Atribuir a aluno",
     copiarPersonalizar:"Copiar e personalizar", asignarOriginal:"Atribuir original",
     diasEntrenamiento:"Dias de treino", frecuenciaSemanal:"Frequência semanal",
     puntoPartida:"Ponto de partida", kg:"kg", lbs:"lbs",
+    misAlumnos:"Meus Alunos", hoyEntrenan:"Treinam hoje",
+    sinRutinaAsig:"Sem rotina", semana:"Semana",
+    nuevaRutinaRepo:"Nova rotina no repositório", asignar:"Atribuir",
+    cancelar:"Cancelar", guardarCambios:"Salvar alterações",
+    misMetricas:"Minhas Métricas", sinObjetivos:"Sem objetivos",
+    nuevoRegistro:"+ Novo registro", sinRegistros:"Sem registros ainda",
+    evolucion:"Evolução", mejorMarca:"Melhor marca",
+    proyeccion1rm:"Projeção 1RM", mejoraTotal:"Melhora total",
+    sesiones:"Sessões", promedio:"Média", tendencia:"Tendência",
+    creciendo:"↑ Crescendo", plan:"Plano atual", diasDescanso:"Dia de descanso!",
+    recuperate:"Aproveite para se recuperar.", verMetricas:t("verMetricas"),
+    pizarra:"Quadro", nuevaNota:"Nova nota...", entrenadores:"Treinadores",
+    alumnosActivos:"Alunos ativos", cuentasSuspendidas:"Contas suspensas",
+    vencen30:"Vencem em 30 dias", vencimientos:"Vencimentos", activo:"Ativo",
+    suspendido:"Suspenso", vencido:"Vencido", ilimitado:"Ilimitado",
+    maxAlumnos:"Máx. alunos", actuales:"atuais",
+    planActual:"Plano atual", bloque:"Bloco", semanas:"Semanas",
+    proximo:"Próximo", frecuencia:"Frequência", dias:"Dias",
+    volumenSemanal:"Volume semanal", rpePromedio:"RPE médio",
+    completadas:"concluídas", racha:"Sequência", sinFallar:"sem falhar",
+    planEjercicios:"Plano de exercícios", registroEnVivo:"Registro ao vivo",
+    rpeGlobal:"RPE geral", ejercicios:"Exercícios", serie:"Série",
   },
   ru: {
     lang:"Русский", inicio:"Главная", entreno:"Тренировка", progreso:"Прогресс",
@@ -543,19 +607,41 @@ const T = {
     resumen:"Обзор", alumnos:"Ученики", usuarios:"Пользователи", overview:"Обзор",
     cerrarSesion:"Выйти", guardar:"Сохранить", perfil:"Профиль",
     seguridad:"Безопасность", nombre:"Полное имя", email:"Эл. почта",
-    celular:"Номер телефона", nacimiento:"Дата рождения",
+    celular:"Телефон", nacimiento:"Дата рождения",
     idioma:"Язык", unidades:"Единицы веса", rol:"Роль",
     pesoInicial:"Начальный вес", altura:"Рост", pesoObj:"Целевой вес (необяз.)",
     imc:"Рассчитанный ИМТ", hoy:"Привет", descanso:"День отдыха!",
     sinRutinas:"Программы не назначены", nuevaRutina:"Новая программа",
     importar:"Импорт", guardarEnt:"Сохранить тренировку 💾",
     guardado:"✓ Сохранено!", registrarMetricas:"Записать метрики",
-    progresoReciente:"Недавний прогресс", objetivosCiclo:"Цели цикла",
+    progresoReciente:"Последний прогресс", objetivosCiclo:"Цели цикла",
     entrenamientoHoy:"Тренировка сегодня", empezar:"Начать 🔥",
     repositorio:"Репозиторий", asignarAlumno:"Назначить ученику",
     copiarPersonalizar:"Копировать и изменить", asignarOriginal:"Назначить оригинал",
     diasEntrenamiento:"Дни тренировок", frecuenciaSemanal:"Частота в неделю",
     puntoPartida:"Отправная точка", kg:"кг", lbs:"фунты",
+    misAlumnos:"Мои ученики", hoyEntrenan:"Тренируются сегодня",
+    sinRutinaAsig:"Без программы", semana:"Неделя",
+    nuevaRutinaRepo:"Новая программа в репозитории", asignar:"Назначить",
+    cancelar:"Отмена", guardarCambios:"Сохранить",
+    misMetricas:"Мои метрики", sinObjetivos:"Цели не назначены",
+    nuevoRegistro:"+ Новая запись", sinRegistros:"Записей пока нет",
+    evolucion:"Эволюция", mejorMarca:"Лучший результат",
+    proyeccion1rm:"Прогноз 1ПМ", mejoraTotal:"Общий прирост",
+    sesiones:"Сессии", promedio:"Среднее", tendencia:"Тренд",
+    creciendo:"↑ Растёт", plan:"Текущий план", diasDescanso:"День отдыха!",
+    recuperate:"Используйте время для восстановления.", verMetricas:"Метрики →",
+    pizarra:"Доска", nuevaNota:"Новая заметка...", entrenadores:"Тренеры",
+    alumnosActivos:"Активные ученики", cuentasSuspendidas:"Заблокированные",
+    vencen30:"Истекают через 30 дней", vencimientos:"Истечения", activo:"Активен",
+    suspendido:"Заблокирован", vencido:"Истёк", ilimitado:"Без ограничений",
+    maxAlumnos:"Макс. учеников", actuales:"текущих",
+    planActual:"Текущий план", bloque:"Блок", semanas:"Недели",
+    proximo:"Следующий", frecuencia:"Частота", dias:"Дни",
+    volumenSemanal:"Объём за неделю", rpePromedio:"Средний RPE",
+    completadas:"выполнено", racha:"Серия", sinFallar:"без пропусков",
+    planEjercicios:"План упражнений", registroEnVivo:"Живой журнал",
+    rpeGlobal:"Общий RPE", ejercicios:"Упражнения", serie:"Подход",
   },
 };
 const LANG_CODES = { "Español":"es", "English":"en", "Português":"pt", "Русский":"ru" };
@@ -1940,6 +2026,7 @@ function RoutinesModule({ currentUser, targetAlumnoId }) {
 // ───────────────────────────────────────────────────────────────────────────────
 function TrainingModule({ currentUser }) {
   const { store, dispatch } = useStore();
+  const t = useLang(currentUser);
   const myRoutines = store.routines[currentUser.id] || [];
   const todayR = myRoutines.find(r=>r.status==="today") || myRoutines[0];
   const [activeId, setActiveId] = useState(todayR?.id);
@@ -2240,6 +2327,7 @@ function MetricHistory({ objId, alumnoId }) {
 // Full MetricsModule — sección propia con tabs por objetivo
 function MetricsModule({ currentUser }) {
   const { store } = useStore();
+  const t = useLang(currentUser);
   const meUser = store.users.find(u=>u.id===currentUser.id);
   const myObjectives = (meUser?.objectives||[]).map(o=>({
     ...o, ...OBJECTIVES_CATALOG.find(c=>c.id===o.id)
@@ -2284,7 +2372,7 @@ function MetricsModule({ currentUser }) {
               {OBJ_METRICS[cur.id]?.tip && <span>💡 {OBJ_METRICS[cur.id].tip}</span>}
             </div>
             <Btn onClick={()=>setShowEntry(p=>!p)} v={showEntry?"ghost":"sm"} style={{ fontSize:12, padding:"6px 14px", flexShrink:0 }}>
-              {showEntry?"× Cancelar":"+ Nuevo registro"}
+              {showEntry?"× Cancelar":t("nuevoRegistro")}
             </Btn>
           </div>
 
@@ -2306,6 +2394,7 @@ function MetricsModule({ currentUser }) {
 // ───────────────────────────────────────────────────────────────────────────────
 function ProgressModule({ currentUser, targetAlumnoId }) {
   const { store } = useStore();
+  const t = useLang(currentUser);
   const alumnoId = targetAlumnoId || currentUser.id;
   const progData = store.progress[alumnoId] || {};
   const exercises = Object.keys(progData);
@@ -2351,10 +2440,10 @@ function ProgressModule({ currentUser, targetAlumnoId }) {
               </Card>
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
                 {[
-                  { label:"Mejora total",    value:`+${(Math.max(...data)-data[0]).toFixed(1)} kg`, color:"var(--green)" },
-                  { label:"Sesiones",        value:data.length, color:"var(--accent)" },
-                  { label:"Promedio",        value:`${(data.reduce((a,b)=>a+b,0)/data.length).toFixed(1)} kg`, color:"var(--sub)" },
-                  { label:"Tendencia",       value:"↑ Creciendo", color:"var(--green)" },
+                  { label:t("mejoraTotal"),    value:`+${(Math.max(...data)-data[0]).toFixed(1)} kg`, color:"var(--green)" },
+                  { label:t("sesiones"),        value:data.length, color:"var(--accent)" },
+                  { label:t("promedio"),        value:`${(data.reduce((a,b)=>a+b,0)/data.length).toFixed(1)} kg`, color:"var(--sub)" },
+                  { label:t("tendencia"),       value:t("creciendo"), color:"var(--green)" },
                 ].map((s,i) => (
                   <Card key={i} style={{ textAlign:"center", padding:12 }}>
                     <div style={{ fontSize:11, color:"var(--sub)", marginBottom:4 }}>{s.label}</div>
@@ -2692,8 +2781,9 @@ function OverviewModule({ currentUser, onNavigate }) {
 // ───────────────────────────────────────────────────────────────────────────────
 
 // ─── SUPERADMIN DASHBOARD ─────────────────────────────────────────────────────
-function SADashboard() {
+function SADashboard({ currentUser }) {
   const { store } = useStore();
+  const t = useLang(currentUser);
   const [notes, setNotes] = useState([
     { id:1, text:"Revisar vencimiento de Sofía el 30/06", color:"#f59e0b" },
     { id:2, text:"Pendiente: onboarding de nuevo entrenador", color:"#3b82f6" },
@@ -2747,10 +2837,10 @@ function SADashboard() {
       {/* Metrics */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:14 }}>
         {[
-          { icon:"🏋️", label:"Entrenadores activos", value:coaches.filter(c=>!c.suspended).length, color:"var(--accent)" },
-          { icon:"👥", label:"Alumnos activos",       value:alumnos.filter(a=>!a.suspended).length, color:"var(--green)" },
-          { icon:"⏸",  label:"Cuentas suspendidas",   value:suspended.length,                       color:"var(--orange)" },
-          { icon:"⏰",  label:"Vencen en 30 días",     value:expiring.length,                        color:"var(--yellow)" },
+          { icon:"🏋️", label:t("entrenadores")+" "+t("activos","activos"), value:coaches.filter(c=>!c.suspended).length, color:"var(--accent)" },
+          { icon:"👥", label:t("alumnosActivos"),       value:alumnos.filter(a=>!a.suspended).length, color:"var(--green)" },
+          { icon:"⏸",  label:t("cuentasSuspendidas"),   value:suspended.length,                       color:"var(--orange)" },
+          { icon:"⏰",  label:t("vencen30"),     value:expiring.length,                        color:"var(--yellow)" },
         ].map((s,i) => (
           <Card key={i} style={{ textAlign:"center", padding:14 }}>
             <div style={{ fontSize:22, marginBottom:4 }}>{s.icon}</div>
@@ -2884,7 +2974,7 @@ function PizarraBoard() {
         </div>
       </div>
       <div style={{ display:"flex", gap:6, marginBottom:10 }}>
-        <input value={newNote} onChange={e=>setNewNote(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addNote()} placeholder="Nueva nota..." style={{ flex:1, fontSize:12, padding:"6px 10px" }}/>
+        <input value={newNote} onChange={e=>setNewNote(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addNote()} placeholder={t("nuevaNota")} style={{ flex:1, fontSize:12, padding:"6px 10px" }}/>
         <Btn onClick={addNote} style={{ padding:"6px 14px", fontSize:12 }}>+</Btn>
       </div>
       <div
@@ -2937,6 +3027,7 @@ function PizarraBoard() {
 // ─── COACH DASHBOARD ──────────────────────────────────────────────────────────
 function CoachDashboard({ currentUser, onNavigate }) {
   const { store } = useStore();
+  const t = useLang(currentUser);
   const theme = getTheme(currentUser);
   const now = new Date();
   const myAlumnos = store.users.filter(u=>u.role==="alumno"&&u.coachId===currentUser.id&&u.active);
@@ -2956,10 +3047,10 @@ function CoachDashboard({ currentUser, onNavigate }) {
       {/* Stats */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:14 }}>
         {[
-          { icon:"👥", label:"Alumnos activos",    value:activos.length,    color:"var(--accent)" },
-          { icon:"🔥", label:"Entrenan hoy",        value:alumnosHoy.length, color:"var(--orange)" },
+          { icon:"👥", label:t("alumnosActivos"),    value:activos.length,    color:"var(--accent)" },
+          { icon:"🔥", label:t("hoyEntrenan"),        value:alumnosHoy.length, color:"var(--orange)" },
           { icon:"⏸",  label:"Suspendidos",         value:suspendidos.length,color:"var(--red)" },
-          { icon:"⚠️", label:"Sin rutina asignada", value:alumnosSinRutina.length, color:"var(--yellow)" },
+          { icon:"⚠️", label:t("sinRutinaAsig"), value:alumnosSinRutina.length, color:"var(--yellow)" },
         ].map((s,i) => (
           <Card key={i} style={{ textAlign:"center", padding:14 }}>
             <div style={{ fontSize:22, marginBottom:4 }}>{s.icon}</div>
@@ -3042,6 +3133,7 @@ function CoachDashboard({ currentUser, onNavigate }) {
 // ─── ALUMNO DASHBOARD ─────────────────────────────────────────────────────────
 function InicioModule({ currentUser, onNavigate }) {
   const { store, dispatch } = useStore();
+  const t = useLang(currentUser);
   const myRoutines  = store.routines[currentUser.id] || [];
   const progData    = store.progress[currentUser.id] || {};
   const todayR      = myRoutines.find(r=>r.status==="today");
@@ -3068,7 +3160,7 @@ function InicioModule({ currentUser, onNavigate }) {
       {/* Stats */}
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:14 }}>
         {[
-          { label:"Sesiones", value:doneCount },
+          { label:t("sesiones"), value:doneCount },
           { label:"Esta semana", value:`${doneCount}/${myRoutines.length}` },
           { label:"Racha", value:"5d" },
         ].map((s,i) => (
@@ -3086,7 +3178,7 @@ function InicioModule({ currentUser, onNavigate }) {
           <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginBottom:12 }}>
             {todayR.exercises.map((e,i) => <Tag key={i}>{e.name}</Tag>)}
           </div>
-          <Btn onClick={()=>onNavigate&&onNavigate("training")} full>Empezar 🔥</Btn>
+          <Btn onClick={()=>onNavigate&&onNavigate("training")} full>{t("empezar")}</Btn>
         </Card>
       ) : (
         <Card style={{ marginBottom:12, textAlign:"center", padding:20 }}>
@@ -3484,8 +3576,8 @@ function AppShell({ currentUser: initUser, onLogout }) {
   const navItems = isAlumno
     ? isSuspended
       ? [
-          { id:"messages", icon:"💬", label:"Mensajes", badge: unreadCount },
-          { id:"config",   icon:"⚙️", label:"Config" },
+          { id:"messages", icon:"💬", label:t("mensajes"), badge: unreadCount },
+          { id:"config",   icon:"⚙️", label:t("config") },
         ]
       : [
           { id:"inicio",    icon:"⊞",  label:"Inicio" },
@@ -3498,18 +3590,18 @@ function AppShell({ currentUser: initUser, onLogout }) {
         ]
     : isCoach
     ? [
-        { id:"overview",  icon:"📊", label:"Resumen" },
-        { id:"users",     icon:"👥", label:"Alumnos" },
-        { id:"routines",  icon:"📋", label:"Rutinas" },
-        { id:"messages",  icon:"💬", label:"Mensajes" },
-        { id:"config",    icon:"⚙️", label:"Config" },
+        { id:"overview",  icon:"📊", label:t("resumen") },
+        { id:"users",     icon:"👥", label:t("alumnos") },
+        { id:"routines",  icon:"📋", label:t("rutinas") },
+        { id:"messages",  icon:"💬", label:t("mensajes"), badge: unreadCount },
+        { id:"config",    icon:"⚙️", label:t("config") },
       ]
     : [ // superadmin
-        { id:"overview",  icon:"📊", label:"Resumen" },
-        { id:"users",     icon:"👥", label:"Usuarios" },
-        { id:"routines",  icon:"📋", label:"Rutinas" },
-        { id:"messages",  icon:"💬", label:"Mensajes", badge: unreadCount },
-        { id:"config",    icon:"⚙️", label:"Config" },
+        { id:"overview",  icon:"📊", label:t("resumen") },
+        { id:"users",     icon:"👥", label:t("usuarios") },
+        { id:"routines",  icon:"📋", label:t("rutinas") },
+        { id:"messages",  icon:"💬", label:t("mensajes"), badge: unreadCount },
+        { id:"config",    icon:"⚙️", label:t("config") },
       ];
 
   const roleLabel = { superadmin:"⭐ SuperAdmin", coach:"🔴 Entrenador", alumno:"Alumno" };
@@ -3581,7 +3673,7 @@ function AppShell({ currentUser: initUser, onLogout }) {
           {page === "inicio" && (
             isAlumno ? <InicioModule currentUser={currentUser} onNavigate={navigate}/> :
             isCoach  ? <CoachDashboard currentUser={currentUser} onNavigate={navigate}/> :
-            isSA     ? <SADashboard/> : null
+            isSA     ? <SADashboard currentUser={currentUser}/> : null
           )}
           {page === "training" && <TrainingModule currentUser={currentUser}/>}
           {page === "progress" && <ProgressModule currentUser={currentUser} targetAlumnoId={targetAlumno}/>}
