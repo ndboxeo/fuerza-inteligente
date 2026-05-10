@@ -1,6 +1,7 @@
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// FUERZA INTELIGENTE V7.1 — Arquitectura Modular
+// FUERZA INTELIGENTE V7.2 — Arquitectura Modular
+// Build: 20260506_024057
 // Build: 20260505_0822
 // ═══════════════════════════════════════════════════════════════════════════════
 //
@@ -1052,7 +1053,7 @@ function UsersModule({ currentUser }) {
     return count >= coach.alumnoLimit;
   };
 
-  const roleLabel = { superadmin:"SuperAdmin", coach:"Entrenador", alumno:"Alumno" };
+  const roleLabel = { superadmin:"SuperAdmin", coach:t("entrenador")||"Entrenador", alumno:t("alumno")||"Alumno" };
   const roleColor = { superadmin:"var(--yellow)", coach:"var(--red)", alumno:"var(--accent)" };
 
   return (
@@ -3526,7 +3527,17 @@ function ConfigModule({ currentUser, onLogout, onUserUpdate }) {
 // ───────────────────────────────────────────────────────────────────────────────
 function AppShell({ currentUser: initUser, onLogout }) {
   const { store, dispatch } = useStore();
-  const [currentUser, setCurrentUserLocal] = useState(initUser);
+  // Restore lang/theme from localStorage for this user
+  const savedPrefs = (() => {
+    try {
+      const s = localStorage.getItem("fi_prefs_"+initUser.id);
+      return s ? JSON.parse(s) : null;
+    } catch { return null; }
+  })();
+  const [currentUser, setCurrentUserLocal] = useState(savedPrefs
+    ? { ...initUser, lang: savedPrefs.lang||initUser.lang, units: savedPrefs.units||initUser.units, themePreset: savedPrefs.themePreset||initUser.themePreset, themeInverted: savedPrefs.themeInverted||false }
+    : initUser
+  );
   const theme = getTheme(currentUser);
 
   // Apply user's saved theme preset on mount and change
@@ -3547,6 +3558,15 @@ function AppShell({ currentUser: initUser, onLogout }) {
   const setCurrentUser = (updated) => {
     dispatch("UPDATE_USER", updated);
     setCurrentUserLocal(updated);
+    // Persist lang/theme/units to localStorage
+    try {
+      localStorage.setItem("fi_prefs_"+updated.id, JSON.stringify({
+        lang: updated.lang,
+        units: updated.units,
+        themePreset: updated.themePreset,
+        themeInverted: updated.themeInverted,
+      }));
+    } catch {}
   };
 
   const navigate = (p, alumnoId=null) => {
@@ -3595,7 +3615,7 @@ function AppShell({ currentUser: initUser, onLogout }) {
     : isCoach
     ? [
         { id:"overview",  icon:"📊", label:t("resumen") },
-        { id:"users",     icon:"👥", label:t("alumnos") },
+        { id:"users",     icon:"👥", label:t("misAlumnos") },
         { id:"routines",  icon:"📋", label:t("rutinas") },
         { id:"messages",  icon:"💬", label:t("mensajes"), badge: unreadCount },
         { id:"config",    icon:"⚙️", label:t("config") },
