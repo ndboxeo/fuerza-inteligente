@@ -1037,11 +1037,16 @@ function AuthModule({ onLogin }) {
     // Supabase auth
     try {
       const auth = await sb.signIn(email, pw);
-      if (auth.error || !auth.access_token) { setErr("Credenciales incorrectas"); setLoading(false); return; }
+      // Debug: log full response
+      console.log("AUTH RESPONSE:", JSON.stringify(auth));
+      if (auth.error) { setErr("Credenciales incorrectas: " + (auth.error.message||auth.error)); setLoading(false); return; }
+      if (!auth.access_token) { setErr("Sin token: " + JSON.stringify(auth)); setLoading(false); return; }
       // Ensure token is set before querying
       sb._token = auth.access_token;
+      const userId = auth.user?.id || auth.id;
+      if (!userId) { setErr("Sin ID de usuario"); setLoading(false); return; }
       // Load profile with explicit token
-      const profRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${auth.user.id}`, {
+      const profRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}`, {
         headers: {
           "Content-Type": "application/json",
           "apikey": SUPABASE_KEY,
@@ -1049,7 +1054,8 @@ function AuthModule({ onLogin }) {
         }
       });
       const profiles = await profRes.json();
-      if (!Array.isArray(profiles) || !profiles.length) { setErr("Perfil no encontrado"); setLoading(false); return; }
+      console.log("PROFILES:", JSON.stringify(profiles));
+      if (!Array.isArray(profiles) || !profiles.length) { setErr("Perfil no encontrado (id: "+userId+")"); setLoading(false); return; }
       const profile = profiles[0];
       if (!profile.active || profile.suspended) { setErr("Cuenta suspendida o inactiva"); setLoading(false); return; }
       // Map DB fields to app format
