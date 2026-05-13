@@ -1,6 +1,7 @@
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// FUERZA INTELIGENTE V7.2 — Arquitectura Modular
+// FUERZA INTELIGENTE V8 — Arquitectura Modular + Supabase
+// Build: 20260510_234623
 // Build: 20260506_024057
 // Build: 20260505_0822
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -24,6 +25,174 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { useState, useContext, createContext, useCallback, useRef, useEffect } from "react";
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// [SUPABASE] Cliente y helpers
+// ═══════════════════════════════════════════════════════════════════════════════
+const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY  = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const IS_DEV        = !SUPABASE_URL; // sin .env = modo demo local
+
+// Lightweight Supabase client (sin SDK, fetch directo)
+const sb = {
+  _headers: () => ({
+    "Content-Type":  "application/json",
+    "apikey":        SUPABASE_KEY,
+    "Authorization": `Bearer ${sb._token || SUPABASE_KEY}`,
+    "Prefer":        "return=representation",
+  }),
+  _token: null,
+
+  // Auth
+  async signIn(email, password) {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method:"POST", headers:{ "Content-Type":"application/json", "apikey":SUPABASE_KEY },
+      body: JSON.stringify({ email, password }),
+    });
+    const d = await r.json();
+    if (d.access_token) { sb._token = d.access_token; sb._refresh = d.refresh_token; }
+    return d;
+  },
+
+  async signOut() {
+    await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+      method:"POST", headers:sb._headers(),
+    });
+    sb._token = null;
+  },
+
+  // DB helpers
+  async select(table, query="") {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${query}`, { headers:sb._headers() });
+    return r.json();
+  },
+  async insert(table, data) {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+      method:"POST", headers:sb._headers(), body:JSON.stringify(data),
+    });
+    return r.json();
+  },
+  async update(table, data, filter) {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${filter}`, {
+      method:"PATCH", headers:sb._headers(), body:JSON.stringify(data),
+    });
+    return r.json();
+  },
+  async delete(table, filter) {
+    await fetch(`${SUPABASE_URL}/rest/v1/${table}?${filter}`, {
+      method:"DELETE", headers:sb._headers(),
+    });
+  },
+
+  // Realtime (messages)
+  subscribe(table, filter, callback) {
+    if (!SUPABASE_URL) return { unsubscribe:()=>{} };
+    const url = `${SUPABASE_URL.replace("https","wss")}/realtime/v1/websocket?vsn=1.0.0&apikey=${SUPABASE_KEY}`;
+    const ws  = new WebSocket(url);
+    ws.onopen  = () => ws.send(JSON.stringify({ topic:`realtime:${table}`, event:"phx_join", payload:{ filter }, ref:"1" }));
+    ws.onmessage = (e) => { const d = JSON.parse(e.data); if (d.event==="INSERT"||d.event==="UPDATE") callback(d.payload); };
+    return { unsubscribe: () => ws.close() };
+  },
+};
+
+// ─── DB helpers mapped to app entities ───────────────────────────────────────
+const DB = {
+  // PROFILES
+  async getProfiles() {
+    return sb.select("profiles", "select=*&active=eq.true&order=created_at.asc");
+  },
+  async upsertProfile(p) {
+    return sb.insert("profiles", p);
+  },
+  async updateProfile(id, data) {
+    return sb.update("profiles", data, `id=eq.${id}`);
+  },
+  async suspendProfile(id, val) {
+    return sb.update("profiles", { suspended:val, suspended_at: val ? new Date().toISOString() : null }, `id=eq.${id}`);
+  },
+
+  // ROUTINES
+  async getRoutines(alumnoId) {
+    return sb.select("routines", `alumno_id=eq.${alumnoId}&order=semana.asc,created_at.asc`);
+  },
+  async insertRoutine(r) {
+    return sb.insert("routines", r);
+  },
+  async updateRoutine(id, data) {
+    return sb.update("routines", data, `id=eq.${id}`);
+  },
+  async deleteRoutine(id) {
+    return sb.delete("routines", `id=eq.${id}`);
+  },
+
+  // REPOSITORY
+  async getRepository(coachId) {
+    return sb.select("repository", `coach_id=eq.${coachId}&order=created_at.asc`);
+  },
+  async insertRepo(r) {
+    return sb.insert("repository", r);
+  },
+  async updateRepo(id, data) {
+    return sb.update("repository", data, `id=eq.${id}`);
+  },
+  async deleteRepo(id) {
+    return sb.delete("repository", `id=eq.${id}`);
+  },
+
+  // MESSAGES
+  async getMessages(userId1, userId2) {
+    return sb.select("messages",
+      `or=(and(from_id.eq.${userId1},to_id.eq.${userId2}),and(from_id.eq.${userId2},to_id.eq.${userId1}))&order=created_at.asc`
+    );
+  },
+  async insertMessage(m) {
+    return sb.insert("messages", m);
+  },
+  async markRead(fromId, toId) {
+    return sb.update("messages", { read:true }, `from_id=eq.${fromId}&to_id=eq.${toId}&read=eq.false`);
+  },
+
+  // METRICS
+  async getMetrics(alumnoId) {
+    return sb.select("metrics", `alumno_id=eq.${alumnoId}&order=created_at.asc`);
+  },
+  async insertMetric(m) {
+    return sb.insert("metrics", m);
+  },
+
+  // PROGRESS
+  async getProgress(alumnoId) {
+    return sb.select("progress", `alumno_id=eq.${alumnoId}&order=created_at.asc`);
+  },
+  async insertProgress(p) {
+    return sb.insert("progress", p);
+  },
+
+  // OBJECTIVES
+  async getObjectives(alumnoId) {
+    return sb.select("objectives", `alumno_id=eq.${alumnoId}`);
+  },
+  async upsertObjectives(alumnoId, objectives) {
+    await sb.delete("objectives", `alumno_id=eq.${alumnoId}`);
+    if (objectives.length) return sb.insert("objectives", objectives.map(o=>({ alumno_id:alumnoId, obj_id:o.id, priority:o.priority, completed:o.completed||false })));
+  },
+
+  // NOTES
+  async getNotes(userId) {
+    return sb.select("notes", `user_id=eq.${userId}&order=created_at.asc`);
+  },
+  async insertNote(n) {
+    return sb.insert("notes", n);
+  },
+  async updateNote(id, data) {
+    return sb.update("notes", data, `id=eq.${id}`);
+  },
+  async deleteNote(id) {
+    return sb.delete("notes", `id=eq.${id}`);
+  },
+};
+
+
 
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -841,15 +1010,69 @@ function Modal({ title, onClose, children, width=480 }) {
 // [M2] AUTH MODULE
 // ───────────────────────────────────────────────────────────────────────────────
 function AuthModule({ onLogin }) {
-  const { store } = useStore();
   const [email, setEmail] = useState("");
   const [pw, setPw]       = useState("");
   const [err, setErr]     = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handle = () => {
-    const u = store.users.find(u => u.email===email && u.password===pw && u.active);
-    if (u) onLogin(u);
-    else setErr("Credenciales incorrectas");
+  const handle = async () => {
+    if (!email || !pw) return;
+    setLoading(true); setErr("");
+
+    if (IS_DEV) {
+      // Demo mode — use hardcoded users
+      const DEMO = [
+        { id:"sa1", role:"superadmin", name:"Admin Master",  email:"admin@fi.com",   password:"admin123", lang:"es", units:"kg", themePreset:"d-red",    themeInverted:false, active:true },
+        { id:"c1",  role:"coach",      name:"Martín López",  email:"martin@fi.com",  password:"1234",     lang:"es", units:"kg", themePreset:"d-red",    themeInverted:false, active:true },
+        { id:"a1",  role:"alumno",     name:"Juan Pérez",    email:"juan@fi.com",    password:"1234",     lang:"es", units:"kg", themePreset:"d-cyan",   themeInverted:false, active:true, gender:"male",   coachId:"c1" },
+        { id:"a2",  role:"alumno",     name:"Laura García",  email:"laura@fi.com",   password:"1234",     lang:"es", units:"kg", themePreset:"d-purple", themeInverted:false, active:true, gender:"female", coachId:"c1" },
+      ];
+      const u = DEMO.find(u => u.email===email && u.password===pw);
+      setLoading(false);
+      if (u) onLogin(u);
+      else setErr("Credenciales incorrectas");
+      return;
+    }
+
+    // Supabase auth
+    try {
+      const auth = await sb.signIn(email, pw);
+      if (auth.error) { setErr("Credenciales incorrectas"); setLoading(false); return; }
+      // Load profile
+      const profiles = await sb.select("profiles", `id=eq.${auth.user.id}`);
+      if (!profiles.length) { setErr("Perfil no encontrado"); setLoading(false); return; }
+      const profile = profiles[0];
+      if (!profile.active || profile.suspended) { setErr("Cuenta suspendida o inactiva"); setLoading(false); return; }
+      // Map DB fields to app format
+      onLogin({
+        id:           profile.id,
+        role:         profile.role,
+        name:         profile.name,
+        email:        auth.user.email,
+        phone:        profile.phone,
+        birthdate:    profile.birthdate,
+        gender:       profile.gender,
+        photo:        profile.photo_url,
+        coachId:      profile.coach_id,
+        lang:         profile.lang || "es",
+        units:        profile.units || "kg",
+        themePreset:  profile.theme_preset || "d-red",
+        themeInverted:profile.theme_inverted || false,
+        pesoInicial:  profile.peso_inicial,
+        pesoObj:      profile.peso_obj,
+        altura:       profile.altura,
+        alumnoLimit:  profile.alumno_limit,
+        expiresAt:    profile.expires_at,
+        suspended:    profile.suspended,
+        suspendedAt:  profile.suspended_at,
+        active:       profile.active,
+        registeredAt: profile.registered_at,
+        password:     "••••••", // never expose
+      });
+    } catch(e) {
+      setErr("Error de conexión. Intentá de nuevo.");
+    }
+    setLoading(false);
   };
 
   return (
@@ -876,20 +1099,29 @@ function AuthModule({ onLogin }) {
             <input type="password" placeholder="••••••••" value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handle()}/>
           </div>
           {err && <p style={{ color:"var(--red)", fontSize:12, marginBottom:10 }}>{err}</p>}
-          <Btn onClick={handle} full>Ingresar →</Btn>
-          <div style={{ marginTop:16, background:"var(--surface)", borderRadius:9, padding:12 }}>
-            <div style={{ fontSize:11, color:"var(--sub)", fontWeight:600, marginBottom:8 }}>DEMO — Cuentas de prueba</div>
-            {[
-              { label:"⭐ SuperAdmin", email:"admin@fi.com",  pw:"admin123" },
-              { label:"🔴 Entrenador", email:"martin@fi.com", pw:"1234" },
-              { label:"🔵 Alumno",    email:"juan@fi.com",   pw:"1234" },
-              { label:"🟣 Alumna",    email:"laura@fi.com",  pw:"1234" },
-            ].map((d,i) => (
-              <button key={i} onClick={()=>{setEmail(d.email);setPw(d.pw);}} style={{ display:"block", width:"100%", background:"transparent", border:"none", textAlign:"left", fontSize:12, color:"var(--text)", padding:"3px 0", cursor:"pointer" }}>
-                {d.label} — <span style={{ color:"var(--sub)" }}>{d.email}</span>
-              </button>
-            ))}
-          </div>
+          <Btn onClick={handle} full disabled={loading}>{loading ? "Ingresando..." : "Ingresar →"}</Btn>
+          {IS_DEV && (
+            <div style={{ marginTop:16, background:"var(--surface)", borderRadius:9, padding:12 }}>
+              <div style={{ fontSize:11, color:"var(--sub)", fontWeight:600, marginBottom:8 }}>DEMO LOCAL — Cuentas de prueba</div>
+              {[
+                { label:"⭐ SuperAdmin", email:"admin@fi.com",  pw:"admin123" },
+                { label:"🔴 Entrenador", email:"martin@fi.com", pw:"1234" },
+                { label:"🔵 Alumno",    email:"juan@fi.com",   pw:"1234" },
+                { label:"🟣 Alumna",    email:"laura@fi.com",  pw:"1234" },
+              ].map((d,i) => (
+                <button key={i} onClick={()=>{setEmail(d.email);setPw(d.pw);}} style={{ display:"block", width:"100%", background:"transparent", border:"none", textAlign:"left", fontSize:12, color:"var(--text)", padding:"3px 0", cursor:"pointer" }}>
+                  {d.label} — <span style={{ color:"var(--sub)" }}>{d.email}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {!IS_DEV && (
+            <div style={{ marginTop:12, textAlign:"center" }}>
+              <span style={{ fontSize:11, color:"var(--sub)", background:"var(--surface)", padding:"3px 10px", borderRadius:6 }}>
+                {import.meta.env.VITE_ENV === "staging" ? "🧪 Staging" : "🚀 Producción"}
+              </span>
+            </div>
+          )}
         </Card>
       </div>
     </div>
@@ -1026,9 +1258,8 @@ function UsersModule({ currentUser }) {
   };
   const openEdit = (u) => { setEditing(u); setForm({...u}); setModal("edit"); };
 
-  const save = () => {
+  const save = async () => {
     if (!form.name || !form.email) return;
-    // Compute expiresAt from expiresInDays if provided
     let expiresAt = form.expiresAt || null;
     if (form.expiresInDays && !isNaN(parseInt(form.expiresInDays))) {
       const d = new Date();
@@ -1037,10 +1268,44 @@ function UsersModule({ currentUser }) {
     }
     const payload = { ...form, expiresAt, suspended: form.suspended||false, suspendedAt: form.suspendedAt||null };
     delete payload.expiresInDays;
-    if (modal === "add") {
-      dispatch("ADD_USER", { ...payload, id:"u"+Date.now(), active:true });
+
+    if (!IS_DEV) {
+      try {
+        if (modal === "add") {
+          // Create auth user first
+          const authRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+            method:"POST",
+            headers:{ "Content-Type":"application/json", "apikey":SUPABASE_KEY, "Authorization":`Bearer ${SUPABASE_KEY}` },
+            body: JSON.stringify({ email:form.email, password:form.password||"1234", email_confirm:true }),
+          });
+          const authData = await authRes.json();
+          const newId = authData.id || authData.user?.id;
+          if (newId) {
+            await DB.upsertProfile({
+              id: newId, role: payload.role, name: payload.name,
+              phone: payload.phone||null, birthdate: payload.birthdate||null,
+              gender: payload.gender||null, coach_id: payload.coachId||null,
+              lang: payload.lang||"es", units: payload.units||"kg",
+              theme_preset: "d-cyan", theme_inverted: false,
+              peso_inicial: payload.pesoInicial||null, peso_obj: payload.pesoObj||null,
+              altura: payload.altura||null, alumno_limit: payload.alumnoLimit||null,
+              expires_at: expiresAt, active: true, suspended: false,
+              registered_at: new Date().toISOString(),
+            });
+            dispatch("ADD_USER", { ...payload, id:newId, active:true, expiresAt });
+          }
+        } else {
+          await DB.updateProfile(editing.id, {
+            name: payload.name, phone: payload.phone, birthdate: payload.birthdate,
+            lang: payload.lang, units: payload.units, alumno_limit: payload.alumnoLimit,
+            expires_at: expiresAt, coach_id: payload.coachId,
+          });
+          dispatch("UPDATE_USER", { ...payload, id:editing.id });
+        }
+      } catch(e) { console.error("Error saving user:", e); }
     } else {
-      dispatch("UPDATE_USER", { ...payload, id:editing.id });
+      if (modal === "add") dispatch("ADD_USER", { ...payload, id:"u"+Date.now(), active:true, expiresAt });
+      else dispatch("UPDATE_USER", { ...payload, id:editing.id });
     }
     setModal(null);
   };
@@ -2519,9 +2784,20 @@ function MessagesModule({ currentUser }) {
   const key = getKey(currentUser.id, selectedId);
   const msgs = store.messages[key]||[];
 
-  const sendMsg = (msgData) => {
+  const sendMsg = async (msgData) => {
     if (!selectedId) return;
-    dispatch("ADD_MESSAGE", { key, msg:{ id:"msg"+Date.now(), from:currentUser.id, to:selectedId, ts:new Date().toLocaleTimeString("es",{hour:"2-digit",minute:"2-digit"}), date:new Date().toISOString(), read:false, ...msgData } });
+    const msg = { id:"msg"+Date.now(), from:currentUser.id, to:selectedId, ts:new Date().toLocaleTimeString("es",{hour:"2-digit",minute:"2-digit"}), date:new Date().toISOString(), read:false, ...msgData };
+    dispatch("ADD_MESSAGE", { key, msg });
+    if (!IS_DEV) {
+      try {
+        await DB.insertMessage({
+          from_id: currentUser.id, to_id: selectedId,
+          text: msgData.text||null, type: msgData.type||"text",
+          media_data: msgData.mediaData||null, link_type: msgData.linkType||null,
+          read: false,
+        });
+      } catch(e) { console.error("Error sending message:", e); }
+    }
   };
 
   const send = () => {
@@ -3287,13 +3563,23 @@ function ConfigModule({ currentUser, onLogout, onUserUpdate }) {
     ? Math.floor((new Date() - new Date(currentUser.birthdate)) / (365.25*24*60*60*1000))
     : null;
 
-  const saveProfile = () => {
+  const saveProfile = async () => {
     const updated = { ...currentUser, ...form };
     onUserUpdate(updated);
-    // Apply theme immediately
     if (form.themePreset) {
       const preset = form.themeInverted ? getInverted(form.themePreset) : THEME_PRESETS.find(p=>p.id===form.themePreset);
       if (preset) applyThemePreset(preset);
+    }
+    if (!IS_DEV) {
+      try {
+        await DB.updateProfile(currentUser.id, {
+          name: form.name, phone: form.phone, birthdate: form.birthdate,
+          lang: form.lang, units: form.units,
+          theme_preset: form.themePreset, theme_inverted: form.themeInverted,
+          peso_inicial: form.pesoInicial||null, peso_obj: form.pesoObj||null,
+          altura: form.altura||null,
+        });
+      } catch(e) { console.error("Error saving profile:", e); }
     }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -3539,6 +3825,72 @@ function AppShell({ currentUser: initUser, onLogout }) {
     : initUser
   );
   const theme = getTheme(currentUser);
+
+  // Load data from Supabase on mount
+  useEffect(() => {
+    if (IS_DEV) return;
+    (async () => {
+      try {
+        // Load all profiles visible to this user
+        const profiles = await DB.getProfiles();
+        profiles.forEach(p => {
+          if (p.id !== currentUser.id) {
+            dispatch("ADD_USER", {
+              id:p.id, role:p.role, name:p.name, email:"",
+              phone:p.phone, birthdate:p.birthdate, gender:p.gender,
+              photo:p.photo_url, coachId:p.coach_id, lang:p.lang||"es",
+              units:p.units||"kg", themePreset:p.theme_preset||"d-red",
+              themeInverted:p.theme_inverted||false,
+              pesoInicial:p.peso_inicial, pesoObj:p.peso_obj, altura:p.altura,
+              alumnoLimit:p.alumno_limit, expiresAt:p.expires_at,
+              suspended:p.suspended, suspendedAt:p.suspended_at,
+              active:p.active, registeredAt:p.registered_at,
+              password:"••••••",
+            });
+          }
+        });
+
+        // Load routines for this user (if alumno) or all alumnos (if coach/SA)
+        if (currentUser.role === "alumno") {
+          const routines = await DB.getRoutines(currentUser.id);
+          routines.forEach(r => dispatch("ADD_ROUTINE", {
+            id:r.id, alumnoId:r.alumno_id, label:r.label, duracion:r.duracion,
+            semana:r.semana, status:r.status, scheduledDate:r.scheduled_date,
+            exercises:r.exercises||[], logs:r.logs||{}, fromRepo:r.from_repo,
+          }));
+        }
+
+        // Load messages
+        const allUsers = profiles.map(p=>p.id);
+        for (const uid of allUsers) {
+          if (uid === currentUser.id) continue;
+          const msgs = await DB.getMessages(currentUser.id, uid);
+          msgs.forEach(m => {
+            const key = [currentUser.id, uid].sort().join("-");
+            dispatch("ADD_MESSAGE", { key, msg:{
+              id:m.id, from:m.from_id, to:m.to_id, text:m.text||"",
+              type:m.type||"text", mediaData:m.media_data, linkType:m.link_type,
+              ts:new Date(m.created_at).toLocaleTimeString("es",{hour:"2-digit",minute:"2-digit"}),
+              date:m.created_at, read:m.read,
+            }});
+          });
+        }
+
+        // Load metrics and progress for alumno
+        if (currentUser.role === "alumno") {
+          const metrics = await DB.getMetrics(currentUser.id);
+          metrics.forEach(m => dispatch("ADD_METRIC", {
+            alumnoId:m.alumno_id, objId:m.obj_id,
+            entry:{ ...m.fields, date:m.created_at, dateLabel:m.date_label },
+          }));
+          const progress = await DB.getProgress(currentUser.id);
+          progress.forEach(p => dispatch("ADD_PROGRESS", {
+            alumnoId:p.alumno_id, exercise:p.exercise, value:p.value,
+          }));
+        }
+      } catch(e) { console.error("Error loading data:", e); }
+    })();
+  }, []);
 
   // Apply user's saved theme preset on mount and change
   useEffect(() => {
