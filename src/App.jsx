@@ -1037,10 +1037,19 @@ function AuthModule({ onLogin }) {
     // Supabase auth
     try {
       const auth = await sb.signIn(email, pw);
-      if (auth.error) { setErr("Credenciales incorrectas"); setLoading(false); return; }
-      // Load profile
-      const profiles = await sb.select("profiles", `id=eq.${auth.user.id}`);
-      if (!profiles.length) { setErr("Perfil no encontrado"); setLoading(false); return; }
+      if (auth.error || !auth.access_token) { setErr("Credenciales incorrectas"); setLoading(false); return; }
+      // Ensure token is set before querying
+      sb._token = auth.access_token;
+      // Load profile with explicit token
+      const profRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${auth.user.id}`, {
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": SUPABASE_KEY,
+          "Authorization": `Bearer ${auth.access_token}`,
+        }
+      });
+      const profiles = await profRes.json();
+      if (!Array.isArray(profiles) || !profiles.length) { setErr("Perfil no encontrado"); setLoading(false); return; }
       const profile = profiles[0];
       if (!profile.active || profile.suspended) { setErr("Cuenta suspendida o inactiva"); setLoading(false); return; }
       // Map DB fields to app format
