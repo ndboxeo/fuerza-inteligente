@@ -1,6 +1,7 @@
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// FUERZA INTELIGENTE V8 — Arquitectura Modular + Supabase
+// FUERZA INTELIGENTE V9 — Supabase completo
+// Build: 20260515_112716
 // Build: 20260510_234623
 // Build: 20260506_024057
 // Build: 20260505_0822
@@ -175,6 +176,13 @@ const DB = {
   async upsertObjectives(alumnoId, objectives) {
     await sb.delete("objectives", `alumno_id=eq.${alumnoId}`);
     if (objectives.length) return sb.insert("objectives", objectives.map(o=>({ alumno_id:alumnoId, obj_id:o.id, priority:o.priority, completed:o.completed||false })));
+  },
+
+  // SUSPEND
+  async suspendCascade(coachId, val) {
+    const now = new Date().toISOString();
+    await sb.update("profiles", { suspended:val, suspended_at: val?now:null }, `id=eq.${coachId}`);
+    await sb.update("profiles", { suspended:val, suspended_at: val?now:null }, `coach_id=eq.${coachId}`);
   },
 
   // NOTES
@@ -1310,6 +1318,10 @@ function UsersModule({ currentUser }) {
             const profileRes = await DB.upsertProfile(profileData);
             console.log("PROFILE INSERT:", JSON.stringify(profileRes));
             dispatch("ADD_USER", { ...payload, id:newId, active:true, expiresAt, password:"••••••" });
+            // Persist objectives
+            if (payload.objectives?.length) {
+              DB.upsertObjectives(newId, payload.objectives).catch(console.error);
+            }
           } else {
             console.error("No ID returned:", JSON.stringify(authData));
             setErr && setErr("Error al crear usuario: " + (authData.message||authData.msg||JSON.stringify(authData)));
@@ -1395,7 +1407,7 @@ function UsersModule({ currentUser }) {
                     <Btn onClick={()=>openEdit(u)} v="ghost" style={{ padding:"3px 10px", fontSize:11 }}>✏️</Btn>
                     {(u.role === "alumno" || (u.role === "coach" && currentUser.role === "superadmin")) && (
                       <Btn
-                        onClick={()=>dispatch("SUSPEND_USER",{id:u.id, val:!u.suspended, role:u.role})}
+                        onClick={()=>{ dispatch("SUSPEND_USER",{id:u.id,val:!u.suspended,role:u.role}); if(!IS_DEV) DB.suspendCascade(u.id,!u.suspended).catch(console.error); }}
                         v={u.suspended ? "success" : "ghost"}
                         style={{ padding:"3px 10px", fontSize:11 }}
                         title={u.suspended ? "Reactivar" : u.role==="coach" ? "Suspender (cascada a alumnos)" : "Suspender"}
@@ -1996,12 +2008,15 @@ function RoutinesModule({ currentUser, targetAlumnoId }) {
   const updRepoEx  = (i,k,v) => setRepoForm(p=>{const ex=[...p.exercises];ex[i]={...ex[i],[k]:v};return {...p,exercises:ex};});
   const remRepoEx  = (i) => setRepoForm(p=>({...p,exercises:p.exercises.filter((_,j)=>j!==i)}));
 
-  const saveRepo = () => {
+  const saveRepo = async () => {
     if (!repoForm.label) return;
     if (repoModal==="edit") {
       dispatch("UPDATE_REPO_ROUTINE", {...repoForm, id:editingRepoId, coachId});
+      if (!IS_DEV) await DB.updateRepo(editingRepoId, { label:repoForm.label, duracion:repoForm.duracion, exercises:repoForm.exercises }).catch(console.error);
     } else {
-      dispatch("ADD_REPO_ROUTINE", {...repoForm, id:"repo"+Date.now(), coachId});
+      const newId = "repo"+Date.now();
+      dispatch("ADD_REPO_ROUTINE", {...repoForm, id:newId, coachId});
+      if (!IS_DEV) await DB.insertRepo({ id:newId, coach_id:coachId, label:repoForm.label, duracion:repoForm.duracion, exercises:repoForm.exercises }).catch(console.error);
     }
     setRepoModal(null);
     setRepoForm({label:"",duracion:"60–75 min",exercises:[]});
@@ -2030,6 +2045,15 @@ function RoutinesModule({ currentUser, targetAlumnoId }) {
       logs: Object.fromEntries((assignMode==="copy"?exercises:routine.exercises).map(e=>[e.id,[]])),
     };
     dispatch("ADD_ROUTINE", newR);
+    if (!IS_DEV) {
+      DB.insertRoutine({
+        id: newR.id, alumno_id: newR.alumnoId, label: newR.label,
+        duracion: newR.duracion, semana: newR.semana, status: newR.status,
+        scheduled_date: newR.scheduledDate||null,
+        exercises: newR.exercises, logs: newR.logs,
+        from_repo: !!newR.fromRepo, repo_id: newR.fromRepo||null,
+      }).catch(e => console.error("Error saving routine:", e));
+    }
     setAssignModal(null);
   };
 
@@ -2041,6 +2065,12 @@ function RoutinesModule({ currentUser, targetAlumnoId }) {
   const saveEdit = () => {
     if (!editForm.label) return;
     dispatch("UPDATE_ROUTINE", {...editForm, alumnoId});
+    if (!IS_DEV) {
+      DB.updateRoutine(editForm.id, {
+        label: editForm.label, duracion: editForm.duracion,
+        exercises: editForm.exercises,
+      }).catch(e => console.error("Error updating routine:", e));
+    }
     setEditModal(null);
   };
 
@@ -2092,7 +2122,7 @@ function RoutinesModule({ currentUser, targetAlumnoId }) {
                   <div style={{ display:"flex", gap:4 }}>
                     <Btn onClick={()=>{setAssignModal(r.id);setAssignAlumnoId(alumnoId||"");}} v="sm" style={{ fontSize:11, padding:"4px 10px" }}>→ Asignar</Btn>
                     <Btn onClick={()=>{setRepoModal("edit");setEditingRepoId(r.id);setRepoForm({...r,exercises:[...r.exercises]});}} v="ghost" style={{ padding:"4px 10px", fontSize:11 }}>✏️</Btn>
-                    <Btn onClick={()=>dispatch("DELETE_REPO_ROUTINE",{id:r.id,coachId})} v="danger" style={{ padding:"4px 10px", fontSize:11 }}>🗑</Btn>
+                    <Btn onClick={()=>{ dispatch("DELETE_REPO_ROUTINE",{id:r.id,coachId}); if(!IS_DEV) DB.deleteRepo(r.id).catch(console.error); }} v="danger" style={{ padding:"4px 10px", fontSize:11 }}>🗑</Btn>
                   </div>
                 </div>
                 <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
@@ -2142,7 +2172,7 @@ function RoutinesModule({ currentUser, targetAlumnoId }) {
                         {canEdit && (
                           <div style={{ display:"flex", gap:4 }}>
                             <Btn onClick={()=>{setEditModal(r.id);setEditForm({...r,exercises:[...r.exercises]});}} v="ghost" style={{ padding:"3px 10px", fontSize:11 }}>✏️</Btn>
-                            <Btn onClick={()=>dispatch("DELETE_ROUTINE",{id:r.id,alumnoId:aid})} v="danger" style={{ padding:"3px 10px", fontSize:11 }}>🗑</Btn>
+                            <Btn onClick={()=>{ dispatch("DELETE_ROUTINE",{id:r.id,alumnoId:aid}); if(!IS_DEV) DB.deleteRoutine(r.id).catch(console.error); }} v="danger" style={{ padding:"3px 10px", fontSize:11 }}>🗑</Btn>
                           </div>
                         )}
                       </div>
@@ -2334,7 +2364,7 @@ function TrainingModule({ currentUser }) {
     setSaved(false);
   };
 
-  const save = () => {
+  const save = async () => {
     dispatch("SAVE_LOG", { alumnoId:currentUser.id, rutinaId:activeId, logs });
     // Update progress
     active?.exercises.forEach(ex => {
@@ -2342,6 +2372,18 @@ function TrainingModule({ currentUser }) {
       const maxKg = Math.max(...exLogs.map(l=>parseFloat(l.kg)||0));
       if (maxKg > 0) dispatch("ADD_PROGRESS", { alumnoId:currentUser.id, exercise:ex.name, value:maxKg });
     });
+    if (!IS_DEV) {
+      try {
+        // Save log to routine
+        await DB.updateRoutine(activeId, { logs, status:"done" });
+        // Save progress entries
+        for (const ex of (active?.exercises||[])) {
+          const exLogs = logs[ex.id]||[];
+          const maxKg = Math.max(...exLogs.map(l=>parseFloat(l.kg)||0));
+          if (maxKg > 0) await DB.insertProgress({ alumno_id:currentUser.id, exercise:ex.name, value:maxKg });
+        }
+      } catch(e) { console.error("Error saving training:", e); }
+    }
     setSaved(true);
     setShowMetrics(true);
   };
@@ -2521,11 +2563,11 @@ function MetricEntryCard({ objId, alumnoId, onSaved }) {
 
   const save = () => {
     if (!Object.values(vals).some(Boolean)) return;
-    dispatch("ADD_METRIC", {
-      alumnoId,
-      objId,
-      entry: { ...vals, date: new Date().toISOString(), dateLabel: new Date().toLocaleDateString("es",{day:"numeric",month:"short"}) }
-    });
+    const entry = { ...vals, date: new Date().toISOString(), dateLabel: new Date().toLocaleDateString("es",{day:"numeric",month:"short"}) };
+    dispatch("ADD_METRIC", { alumnoId, objId, entry });
+    if (!IS_DEV) {
+      DB.insertMetric({ alumno_id:alumnoId, obj_id:objId, fields:vals, date_label:entry.dateLabel }).catch(console.error);
+    }
     setSaved(true);
     if (onSaved) onSaved();
     setTimeout(()=>setSaved(false), 2000);
@@ -3870,7 +3912,7 @@ function AppShell({ currentUser: initUser, onLogout }) {
           }
         });
 
-        // Load routines for this user (if alumno) or all alumnos (if coach/SA)
+        // Load routines
         if (currentUser.role === "alumno") {
           const routines = await DB.getRoutines(currentUser.id);
           routines.forEach(r => dispatch("ADD_ROUTINE", {
@@ -3878,6 +3920,31 @@ function AppShell({ currentUser: initUser, onLogout }) {
             semana:r.semana, status:r.status, scheduledDate:r.scheduled_date,
             exercises:r.exercises||[], logs:r.logs||{}, fromRepo:r.from_repo,
           }));
+        } else if (currentUser.role === "coach") {
+          // Load repo
+          const repo = await DB.getRepository(currentUser.id);
+          repo.forEach(r => dispatch("ADD_REPO_ROUTINE", {
+            id:r.id, coachId:r.coach_id, label:r.label, duracion:r.duracion, exercises:r.exercises||[],
+          }));
+          // Load routines for all alumnos of this coach
+          const myAlumnos = profiles.filter(p => p.coach_id === currentUser.id);
+          for (const a of myAlumnos) {
+            const routines = await DB.getRoutines(a.id);
+            routines.forEach(r => dispatch("ADD_ROUTINE", {
+              id:r.id, alumnoId:r.alumno_id, label:r.label, duracion:r.duracion,
+              semana:r.semana, status:r.status, scheduledDate:r.scheduled_date,
+              exercises:r.exercises||[], logs:r.logs||{}, fromRepo:r.from_repo,
+            }));
+          }
+        } else if (currentUser.role === "superadmin") {
+          // Load all repos and routines
+          const allCoaches = profiles.filter(p => p.role === "coach");
+          for (const coach of allCoaches) {
+            const repo = await DB.getRepository(coach.id);
+            repo.forEach(r => dispatch("ADD_REPO_ROUTINE", {
+              id:r.id, coachId:r.coach_id, label:r.label, duracion:r.duracion, exercises:r.exercises||[],
+            }));
+          }
         }
 
         // Load messages
@@ -3894,6 +3961,19 @@ function AppShell({ currentUser: initUser, onLogout }) {
               date:m.created_at, read:m.read,
             }});
           });
+        }
+
+        // Load objectives for alumnos
+        const alumnoProfiles = profiles.filter(p => p.role === "alumno");
+        const myAlumnoIds = currentUser.role === "alumno"
+          ? [currentUser.id]
+          : alumnoProfiles.filter(p => currentUser.role==="superadmin" || p.coach_id===currentUser.id).map(p=>p.id);
+
+        for (const aid of myAlumnoIds) {
+          const objs = await DB.getObjectives(aid);
+          if (objs.length) {
+            dispatch("SET_OBJECTIVES", { alumnoId:aid, objectives: objs.map(o=>({ id:o.obj_id, priority:o.priority, completed:o.completed })) });
+          }
         }
 
         // Load metrics and progress for alumno
@@ -3927,9 +4007,21 @@ function AppShell({ currentUser: initUser, onLogout }) {
   const [sideOpen, setSideOpen] = useState(false);
   const [targetAlumno, setTargetAlumno] = useState(null); // para coach viendo rutinas de alumno
 
-  const setCurrentUser = (updated) => {
+  const setCurrentUser = async (updated) => {
     dispatch("UPDATE_USER", updated);
     setCurrentUserLocal(updated);
+    if (!IS_DEV) {
+      try {
+        await DB.updateProfile(updated.id, {
+          name: updated.name, phone: updated.phone||null,
+          birthdate: updated.birthdate||null, lang: updated.lang||"es",
+          units: updated.units||"kg", theme_preset: updated.themePreset||"d-red",
+          theme_inverted: updated.themeInverted||false,
+          peso_inicial: updated.pesoInicial||null, peso_obj: updated.pesoObj||null,
+          altura: updated.altura||null,
+        });
+      } catch(e) { console.error("Error updating profile:", e); }
+    }
     // Persist lang/theme/units to localStorage
     try {
       localStorage.setItem("fi_prefs_"+updated.id, JSON.stringify({
