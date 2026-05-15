@@ -297,6 +297,7 @@ const OBJ_CAT_COLORS = {
   "Control":"#3b82f6", "Composición":"#a855f7", "Rendimiento":"#6b7280", "Recuperación":"#9ca3af"
 };
 
+const IS_SUPABASE = !!import.meta.env?.VITE_SUPABASE_URL;
 const INITIAL_STORE = {
   // Usuarios: superadmin → coach → alumno
   users: [
@@ -1283,27 +1284,35 @@ function UsersModule({ currentUser }) {
     if (!IS_DEV) {
       try {
         if (modal === "add") {
-          // Create auth user first
+          // Create auth user first (requires service role key)
+          const SERVICE_KEY = import.meta.env.VITE_SUPABASE_SERVICE_KEY || SUPABASE_KEY;
           const authRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
             method:"POST",
-            headers:{ "Content-Type":"application/json", "apikey":SUPABASE_KEY, "Authorization":`Bearer ${SUPABASE_KEY}` },
+            headers:{ "Content-Type":"application/json", "apikey":SERVICE_KEY, "Authorization":`Bearer ${SERVICE_KEY}` },
             body: JSON.stringify({ email:form.email, password:form.password||"1234", email_confirm:true }),
           });
           const authData = await authRes.json();
+          console.log("CREATE USER RESPONSE:", JSON.stringify(authData));
           const newId = authData.id || authData.user?.id;
           if (newId) {
-            await DB.upsertProfile({
+            const profileData = {
               id: newId, role: payload.role, name: payload.name,
               phone: payload.phone||null, birthdate: payload.birthdate||null,
               gender: payload.gender||null, coach_id: payload.coachId||null,
               lang: payload.lang||"es", units: payload.units||"kg",
-              theme_preset: "d-cyan", theme_inverted: false,
+              theme_preset: payload.role==="alumno" ? (payload.gender==="female"?"d-purple":"d-cyan") : "d-red",
+              theme_inverted: false,
               peso_inicial: payload.pesoInicial||null, peso_obj: payload.pesoObj||null,
               altura: payload.altura||null, alumno_limit: payload.alumnoLimit||null,
               expires_at: expiresAt, active: true, suspended: false,
               registered_at: new Date().toISOString(),
-            });
-            dispatch("ADD_USER", { ...payload, id:newId, active:true, expiresAt });
+            };
+            const profileRes = await DB.upsertProfile(profileData);
+            console.log("PROFILE INSERT:", JSON.stringify(profileRes));
+            dispatch("ADD_USER", { ...payload, id:newId, active:true, expiresAt, password:"••••••" });
+          } else {
+            console.error("No ID returned:", JSON.stringify(authData));
+            setErr && setErr("Error al crear usuario: " + (authData.message||authData.msg||JSON.stringify(authData)));
           }
         } else {
           await DB.updateProfile(editing.id, {
