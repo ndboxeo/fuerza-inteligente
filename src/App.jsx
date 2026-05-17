@@ -1397,8 +1397,12 @@ function UsersModule({ currentUser }) {
   };
   const openEdit = (u) => { setEditing(u); setForm({...u}); setModal("edit"); };
 
+  const [saveError, setSaveError] = useState("");
+  const [saving, setSaving] = useState(false);
   const save = async () => {
-    if (!form.name || !form.email) return;
+    if (!form.name || !form.email) { setSaveError("Nombre y email son obligatorios"); return; }
+    setSaveError("");
+    setSaving(true);
     let expiresAt = form.expiresAt || null;
     if (form.expiresInDays && !isNaN(parseInt(form.expiresInDays))) {
       const d = new Date();
@@ -1442,8 +1446,11 @@ function UsersModule({ currentUser }) {
               DB.upsertObjectives(newId, payload.objectives).catch(console.error);
             }
           } else {
-            console.error("No ID returned:", JSON.stringify(authData));
-            setErr && setErr("Error al crear usuario: " + (authData.message||authData.msg||JSON.stringify(authData)));
+            const errMsg = authData.message || authData.msg || authData.error_description || JSON.stringify(authData);
+            console.error("No ID returned:", errMsg);
+            setSaveError("Error al crear usuario: " + errMsg);
+            setLoading && setLoading(false);
+            return;
           }
         } else {
           await DB.updateProfile(editing.id, {
@@ -1458,6 +1465,7 @@ function UsersModule({ currentUser }) {
       if (modal === "add") dispatch("ADD_USER", { ...payload, id:"u"+Date.now(), active:true, expiresAt });
       else dispatch("UPDATE_USER", { ...payload, id:editing.id });
     }
+    setSaving(false);
     setModal(null);
   };
 
@@ -1664,9 +1672,14 @@ function UsersModule({ currentUser }) {
               </>
             )}
             <Divider/>
+            {saveError && (
+              <div style={{ background:"#ef444411", border:"1px solid #ef444433", borderRadius:8, padding:"8px 12px", fontSize:12, color:"#ef4444", marginBottom:8 }}>
+                {saveError}
+              </div>
+            )}
             <div style={{ display:"flex", gap:8 }}>
               <Btn v="ghost" onClick={()=>setModal(null)} full>Cancelar</Btn>
-              <Btn onClick={save} full disabled={!form.name||!form.email}>Guardar ✓</Btn>
+              <Btn onClick={save} full disabled={!form.name||!form.email||saving}>{saving?"Guardando...":"Guardar ✓"}</Btn>
             </div>
           </div>
         </Modal>
@@ -3751,6 +3764,7 @@ function ConfigModule({ currentUser, onLogout, onUserUpdate }) {
   const [saved, setSaved]   = useState(false);
   const [pwMsg, setPwMsg]   = useState("");
   const [section, setSection] = useState("perfil");
+  const [editingPhoto, setEditingPhoto] = useState(null);
 
   const bmi = calcBMI(parseFloat(form.pesoInicial), parseFloat(form.altura));
   const langCode = LANG_CODES[form.lang] || "es";
@@ -3822,9 +3836,8 @@ function ConfigModule({ currentUser, onLogout, onUserUpdate }) {
       {/* ── PERFIL ── */}
       {section === "perfil" && (
         <Card>
-          {!isSA && (() => {
-            const [editingPhoto, setEditingPhoto] = useState(null);
-            return editingPhoto ? (
+          {!isSA && (
+            editingPhoto ? (
               <div style={{ marginBottom:20 }}>
                 <PhotoEditor
                   src={editingPhoto}
@@ -3843,8 +3856,8 @@ function ConfigModule({ currentUser, onLogout, onUserUpdate }) {
                   <div style={{ fontSize:11, color:"var(--sub)", marginTop:1 }}>Tocá la foto para cambiarla</div>
                 </div>
               </div>
-            );
-          })()}
+            )
+          )}
           <div style={{ display:"flex", flexDirection:"column", gap:11 }}>
             <div><Label>{t("nombre").toUpperCase()}</Label><input value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))}/></div>
             <div><Label>{t("email").toUpperCase()}</Label><input value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))}/></div>
