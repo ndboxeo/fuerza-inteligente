@@ -1,6 +1,7 @@
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// FUERZA INTELIGENTE V9 — Supabase completo
+// FUERZA INTELIGENTE V10
+// Build: 20260517_013326
 // Build: 20260515_112716
 // Build: 20260510_234623
 // Build: 20260506_024057
@@ -176,6 +177,34 @@ const DB = {
   async upsertObjectives(alumnoId, objectives) {
     await sb.delete("objectives", `alumno_id=eq.${alumnoId}`);
     if (objectives.length) return sb.insert("objectives", objectives.map(o=>({ alumno_id:alumnoId, obj_id:o.id, priority:o.priority, completed:o.completed||false })));
+  },
+
+  // PHOTO UPLOAD to Supabase Storage
+  async uploadPhoto(userId, base64DataUrl) {
+    try {
+      // Convert base64 to blob
+      const res = await fetch(base64DataUrl);
+      const blob = await res.blob();
+      const ext = blob.type.includes("png") ? "png" : "jpg";
+      const path = `avatars/${userId}.${ext}`;
+      // Upload to storage
+      const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/avatars/${userId}.${ext}`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${sb._token}`,
+          "apikey": SUPABASE_KEY,
+          "Content-Type": blob.type,
+          "x-upsert": "true",
+        },
+        body: blob,
+      });
+      if (!uploadRes.ok) throw new Error("Upload failed");
+      // Return public URL
+      return `${SUPABASE_URL}/storage/v1/object/public/avatars/${userId}.${ext}`;
+    } catch(e) {
+      console.error("Photo upload error:", e);
+      return null;
+    }
   },
 
   // SUSPEND
@@ -467,6 +496,7 @@ function StoreProvider({ children }) {
     setStore(prev => {
       switch (action) {
         // ── USERS ──
+        case "CLEAR_USERS": return { ...prev, users: [] };
         case "ADD_USER": return { ...prev, users: [...prev.users, payload] };
         case "UPDATE_USER": return { ...prev, users: prev.users.map(u => u.id===payload.id ? {...u,...payload} : u) };
         case "DELETE_USER": return { ...prev, users: prev.users.map(u => u.id===payload ? {...u,active:false} : u) };
@@ -944,14 +974,103 @@ function Avatar({ name, color, size=36, photo, onClick, editable=false }) {
   );
 }
 
+
+// ─── PHOTO EDITOR with zoom + crop ──────────────────────────────────────────
+function PhotoEditor({ src, onSave, onCancel }) {
+  const canvasRef = useRef();
+  const [zoom, setZoom]   = useState(1);
+  const [offsetX, setOffsetX] = useState(0);
+  const [offsetY, setOffsetY] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({x:0,y:0});
+  const SIZE = 220;
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !src) return;
+    const ctx = canvas.getContext("2d");
+    const img = new Image();
+    img.onload = () => {
+      ctx.clearRect(0,0,SIZE,SIZE);
+      // Draw circle clip
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(SIZE/2, SIZE/2, SIZE/2, 0, Math.PI*2);
+      ctx.clip();
+      // Draw image centered + zoomed + offset
+      const scale = Math.max(SIZE/img.width, SIZE/img.height) * zoom;
+      const w = img.width * scale;
+      const h = img.height * scale;
+      const x = (SIZE - w)/2 + offsetX;
+      const y = (SIZE - h)/2 + offsetY;
+      ctx.drawImage(img, x, y, w, h);
+      ctx.restore();
+      // Border
+      ctx.beginPath();
+      ctx.arc(SIZE/2, SIZE/2, SIZE/2-1, 0, Math.PI*2);
+      ctx.strokeStyle = "var(--accent)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    };
+    img.src = src;
+  }, [src, zoom, offsetX, offsetY]);
+
+  const onMouseDown = (e) => {
+    setDragging(true);
+    const clientX = e.touches?e.touches[0].clientX:e.clientX;
+    const clientY = e.touches?e.touches[0].clientY:e.clientY;
+    setDragStart({x:clientX-offsetX, y:clientY-offsetY});
+  };
+  const onMouseMove = (e) => {
+    if (!dragging) return;
+    const clientX = e.touches?e.touches[0].clientX:e.clientX;
+    const clientY = e.touches?e.touches[0].clientY:e.clientY;
+    setOffsetX(clientX-dragStart.x);
+    setOffsetY(clientY-dragStart.y);
+  };
+  const onMouseUp = () => setDragging(false);
+
+  const handleSave = () => {
+    const canvas = canvasRef.current;
+    onSave(canvas.toDataURL("image/jpeg", 0.85));
+  };
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12 }}>
+      <div style={{ fontSize:12, color:"var(--sub)", marginBottom:4 }}>
+        Arrastrá para centrar · Zoom para ajustar
+      </div>
+      <canvas
+        ref={canvasRef} width={SIZE} height={SIZE}
+        onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp}
+        onTouchStart={onMouseDown} onTouchMove={onMouseMove} onTouchEnd={onMouseUp}
+        style={{ borderRadius:"50%", cursor:"grab", touchAction:"none" }}
+      />
+      <div style={{ width:"100%", display:"flex", alignItems:"center", gap:10 }}>
+        <span style={{ fontSize:11, color:"var(--sub)" }}>🔍</span>
+        <input type="range" min="1" max="3" step="0.05" value={zoom}
+          onChange={e=>setZoom(parseFloat(e.target.value))}
+          style={{ flex:1, accentColor:"var(--accent)" }}/>
+        <span style={{ fontSize:11, color:"var(--sub)" }}>🔎</span>
+      </div>
+      <div style={{ display:"flex", gap:8, width:"100%" }}>
+        <Btn v="ghost" onClick={onCancel} full>Cancelar</Btn>
+        <Btn onClick={handleSave} full>Guardar foto ✓</Btn>
+      </div>
+    </div>
+  );
+}
+
 // Photo upload input helper
 function PhotoUpload({ onPhoto, children }) {
   const ref = useRef();
   const handle = (e) => {
     const f = e.target.files[0];
     if (!f) return;
+    // Validate it's an image
+    if (!f.type.startsWith("image/")) return;
     const reader = new FileReader();
-    reader.onload = ev => onPhoto(ev.target.result);
+    reader.onload = ev => onPhoto(ev.target.result); // only passes base64, never filename
     reader.readAsDataURL(f);
   };
   return (
@@ -1072,7 +1191,7 @@ function AuthModule({ onLogin }) {
         phone:        profile.phone,
         birthdate:    profile.birthdate,
         gender:       profile.gender,
-        photo:        profile.photo_url,
+        photo:        profile.photo_url || null,
         coachId:      profile.coach_id,
         lang:         profile.lang || "es",
         units:        profile.units || "kg",
@@ -1350,7 +1469,7 @@ function UsersModule({ currentUser }) {
     return count >= coach.alumnoLimit;
   };
 
-  const roleLabel = { superadmin:"SuperAdmin", coach:t("entrenador")||"Entrenador", alumno:t("alumno")||"Alumno" };
+  const roleLabel = { superadmin:"SuperAdmin", coach:"Entrenador", alumno:"Alumno" };
   const roleColor = { superadmin:"var(--yellow)", coach:"var(--red)", alumno:"var(--accent)" };
 
   return (
@@ -1928,12 +2047,18 @@ function ImportModule({ alumnoId, onImport, onClose }) {
                     <tbody>
                       {cur.exercises.map((e,i)=>(
                         <tr key={i} style={{ borderTop:"1px solid var(--border)" }}>
-                          <td style={{ padding:"6px 8px", fontWeight:600 }}>{e.name}</td>
-                          <td style={{ padding:"6px 8px" }}>{e.sets}</td>
-                          <td style={{ padding:"6px 8px" }}>{e.reps}</td>
-                          <td style={{ padding:"6px 8px", color:"var(--accent)" }}>{e.pct}</td>
-                          <td style={{ padding:"6px 8px" }}>{e.peso}</td>
-                          <td style={{ padding:"6px 8px" }}>{e.descanso}</td>
+                          <td style={{ padding:"6px 8px", fontWeight:600 }}>
+  {e.instruccion && (e.instruccion.includes("youtube.com")||e.instruccion.includes("youtu.be")) ? (
+    <a href={e.instruccion} target="_blank" rel="noreferrer" style={{ color:"var(--accent)", textDecoration:"none" }}>
+      {e.name} <span style={{ fontSize:10 }}>▶</span>
+    </a>
+  ) : e.name}
+</td>
+<td style={{ padding:"6px 8px" }}>{e.sets}</td>
+<td style={{ padding:"6px 8px" }}>{e.reps}</td>
+<td style={{ padding:"6px 8px", color:"var(--accent)" }}>{e.pct}</td>
+<td style={{ padding:"6px 8px" }}>{e.peso}</td>
+<td style={{ padding:"6px 8px" }}>{e.descanso}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -2431,7 +2556,16 @@ function TrainingModule({ currentUser }) {
                 <td style={{ padding:"7px 10px" }}>{ex.pct}</td>
                 <td style={{ padding:"7px 10px", whiteSpace:"nowrap" }}>{ex.peso}</td>
                 <td style={{ padding:"7px 10px", whiteSpace:"nowrap" }}>{ex.descanso}</td>
-                <td style={{ padding:"7px 10px", color:"var(--sub)", maxWidth:160 }}>{ex.instruccion||"—"}</td>
+                <td style={{ padding:"7px 10px", color:"var(--sub)", maxWidth:160 }}>
+  {ex.instruccion ? (
+    ex.instruccion.includes("youtube.com") || ex.instruccion.includes("youtu.be") ? (
+      <a href={ex.instruccion} target="_blank" rel="noreferrer"
+        style={{ color:"var(--accent)", fontSize:12, display:"flex", alignItems:"center", gap:4 }}>
+        <span>▶</span> Ver en YouTube
+      </a>
+    ) : ex.instruccion
+  ) : "—"}
+</td>
               </tr>
             ))}
           </tbody>
@@ -2510,7 +2644,7 @@ const OBJ_METRICS = {
   acond_gral:  { fields:[{key:"rondas",  label:"Rondas totales",  type:"number"}, {key:"tiempo",    label:"Tiempo total",  type:"number", unit:"min"}], tip:"Más trabajo en el mismo tiempo = progreso", chart:"rondas" },
   // 🔵 Control
   core:        { fields:[{key:"tiempo",  label:"Tiempo sostenido", type:"number", unit:"seg"}, {key:"sensacion", label:"Dificultad", type:"select", options:["Fácil","Medio","Difícil"]}], tip:"Cada vez más estable o más tiempo", chart:"tiempo" },
-  movilidad:   { fields:[{key:"rango",   label:"¿Llegaste más profundo?", type:"select", options:["Sí","Igual","No"]}, {key:"sensacion", label:"Sensación", type:"select", options:["Tirante","Normal","Cómodo"]}], tip:"Buscá moverte mejor, no más fuerte", chart:null },
+  movilidad:   { fields:[{key:"rango",   label:"¿Llegaste más profundo?", type:"select", options:["Sí","Igual","No"]}, {key:"sensacion", label:"Sensación", type:"select", options:["⏸ Suspender","Normal","Cómodo"]}], tip:"Buscá moverte mejor, no más fuerte", chart:null },
   tecnica:     { fields:[{key:"calidad", label:"Calidad técnica (1-5)", type:"number"}], tip:"Que cada repetición se vea mejor que la anterior", chart:"calidad" },
   prev_lesion: { fields:[{key:"dolor",   label:"Nivel de molestia (0-10)", type:"number"}, {key:"sensacion", label:"Sensación general", type:"select", options:["Bien","Regular","Mal"]}], tip:"Si baja el dolor y mejora la sensación, vamos bien", chart:"dolor" },
   // 🟣 Composición
@@ -3634,13 +3768,23 @@ function ConfigModule({ currentUser, onLogout, onUserUpdate }) {
     }
     if (!IS_DEV) {
       try {
+        let photoUrl = form.photo;
+        // Upload photo if it's a new base64 (not a URL)
+        if (form.photo && form.photo.startsWith("data:")) {
+          const uploaded = await DB.uploadPhoto(currentUser.id, form.photo);
+          if (uploaded) photoUrl = uploaded;
+        }
         await DB.updateProfile(currentUser.id, {
           name: form.name, phone: form.phone, birthdate: form.birthdate,
           lang: form.lang, units: form.units,
           theme_preset: form.themePreset, theme_inverted: form.themeInverted,
           peso_inicial: form.pesoInicial||null, peso_obj: form.pesoObj||null,
-          altura: form.altura||null,
+          altura: form.altura||null, photo_url: photoUrl||null,
         });
+        // Update local user with permanent URL
+        if (photoUrl && photoUrl !== form.photo) {
+          setForm(p=>({...p, photo:photoUrl}));
+        }
       } catch(e) { console.error("Error saving profile:", e); }
     }
     setSaved(true);
@@ -3678,18 +3822,29 @@ function ConfigModule({ currentUser, onLogout, onUserUpdate }) {
       {/* ── PERFIL ── */}
       {section === "perfil" && (
         <Card>
-          {!isSA && (
-            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:20, gap:8 }}>
-              <PhotoUpload onPhoto={photo=>setForm(p=>({...p,photo}))}>
-                <Avatar name={form.name} color={theme.accent} size={80} photo={form.photo} editable={true}/>
-              </PhotoUpload>
-              <div style={{ textAlign:"center" }}>
-                <div style={{ fontSize:13, fontWeight:600 }}>{form.name}</div>
-                <div style={{ fontSize:11, color:"var(--sub)" }}>{roleLabel[currentUser.role]}{age?` · ${age} años`:""}</div>
-                <div style={{ fontSize:11, color:"var(--sub)", marginTop:1 }}>Tocá la foto para cambiarla</div>
+          {!isSA && (() => {
+            const [editingPhoto, setEditingPhoto] = useState(null);
+            return editingPhoto ? (
+              <div style={{ marginBottom:20 }}>
+                <PhotoEditor
+                  src={editingPhoto}
+                  onSave={photo=>{ setForm(p=>({...p,photo})); setEditingPhoto(null); }}
+                  onCancel={()=>setEditingPhoto(null)}
+                />
               </div>
-            </div>
-          )}
+            ) : (
+              <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:20, gap:8 }}>
+                <PhotoUpload onPhoto={raw=>setEditingPhoto(raw)}>
+                  <Avatar name={form.name} color={theme.accent} size={80} photo={form.photo} editable={true}/>
+                </PhotoUpload>
+                <div style={{ textAlign:"center" }}>
+                  <div style={{ fontSize:13, fontWeight:600 }}>{form.name}</div>
+                  <div style={{ fontSize:11, color:"var(--sub)" }}>{roleLabel[currentUser.role]}{age?` · ${age} años`:""}</div>
+                  <div style={{ fontSize:11, color:"var(--sub)", marginTop:1 }}>Tocá la foto para cambiarla</div>
+                </div>
+              </div>
+            );
+          })()}
           <div style={{ display:"flex", flexDirection:"column", gap:11 }}>
             <div><Label>{t("nombre").toUpperCase()}</Label><input value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))}/></div>
             <div><Label>{t("email").toUpperCase()}</Label><input value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))}/></div>
@@ -3893,6 +4048,8 @@ function AppShell({ currentUser: initUser, onLogout }) {
     if (IS_DEV) return;
     (async () => {
       try {
+        // Clear demo users from store before loading real data
+        dispatch("CLEAR_USERS");
         // Load all profiles visible to this user
         const profiles = await DB.getProfiles();
         profiles.forEach(p => {
