@@ -101,6 +101,9 @@ const sb = {
 const DB = {
   // PROFILES
   async getProfiles() {
+    return sb.select("profiles", "select=*&active=eq.true&suspended=eq.false&order=created_at.asc");
+  },
+  async getAllProfiles() {
     return sb.select("profiles", "select=*&active=eq.true&order=created_at.asc");
   },
   async upsertProfile(p) {
@@ -205,6 +208,17 @@ const DB = {
       console.error("Photo upload error:", e);
       return null;
     }
+  },
+
+  // DELETE USER
+  async deleteUser(userId) {
+    // Delete from auth (requires service key)
+    const SERVICE_KEY = typeof window !== "undefined" && import.meta?.env?.VITE_SUPABASE_SERVICE_KEY || SUPABASE_KEY;
+    await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
+      method: "DELETE",
+      headers: { "apikey": SERVICE_KEY, "Authorization": `Bearer ${SERVICE_KEY}` },
+    });
+    // Profile cascades automatically via ON DELETE CASCADE
   },
 
   // SUSPEND
@@ -1540,7 +1554,14 @@ function UsersModule({ currentUser }) {
                         title={u.suspended ? "Reactivar" : u.role==="coach" ? "Suspender (cascada a alumnos)" : "Suspender"}
                       >{u.suspended ? "▶ Reactivar" : "⏸ Suspender"}</Btn>
                     )}
-                    <Btn onClick={()=>dispatch("DELETE_USER", u.id)} v="danger" style={{ padding:"3px 10px", fontSize:11 }}>🗑</Btn>
+                    <Btn onClick={async ()=>{
+                      if (!window.confirm(`¿Eliminar a ${u.name}? Esta acción no se puede deshacer.`)) return;
+                      dispatch("DELETE_USER", u.id);
+                      if (!IS_DEV) {
+                        try { await DB.deleteUser(u.id); }
+                        catch(e) { console.error("Error deleting user:", e); }
+                      }
+                    }} v="danger" style={{ padding:"3px 10px", fontSize:11 }}>🗑</Btn>
                   </div>
                 </div>
               </div>
@@ -4064,7 +4085,7 @@ function AppShell({ currentUser: initUser, onLogout }) {
         // Clear demo users from store before loading real data
         dispatch("CLEAR_USERS");
         // Load all profiles visible to this user
-        const profiles = await DB.getProfiles();
+        const profiles = await DB.getAllProfiles();
         profiles.forEach(p => {
           if (p.id !== currentUser.id) {
             dispatch("ADD_USER", {
