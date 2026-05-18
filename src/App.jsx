@@ -1433,9 +1433,22 @@ function UsersModule({ currentUser }) {
     // Check alumno limit before creating
     if (modal === "add" && form.role === "alumno") {
       const targetCoachId = form.coachId || currentUser.id;
-      if (coachAtLimit(targetCoachId)) {
-        setSaveError("Este entrenador alcanzó el límite de alumnos. Contactá al administrador para ampliarlo.");
-        return;
+      const coach = store.users.find(u=>u.id===targetCoachId);
+      const limit = coach?.alumnoLimit;
+      if (limit !== null && limit !== undefined && limit > 0) {
+        // Query Supabase for real count
+        let realCount = store.users.filter(u=>u.role==="alumno"&&u.coachId===targetCoachId&&u.active&&!u.suspended).length;
+        if (!IS_DEV) {
+          try {
+            const rows = await sb.select("profiles", `role=eq.alumno&coach_id=eq.${targetCoachId}&active=eq.true&suspended=eq.false&select=id`);
+            if (Array.isArray(rows)) realCount = rows.length;
+          } catch(e) { console.error("Error checking limit:", e); }
+        }
+        if (realCount >= limit) {
+          setSaveError(`Límite alcanzado: este entrenador tiene ${realCount}/${limit} alumnos. Aumentá el límite desde la configuración del entrenador.`);
+          setSaving(false);
+          return;
+        }
       }
     }
     setSaveError("");
