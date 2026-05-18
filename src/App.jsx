@@ -1,6 +1,7 @@
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// FUERZA INTELIGENTE V10
+// FUERZA INTELIGENTE V11
+// Build: 20260518_001511
 // Build: 20260517_013326
 // Build: 20260515_112716
 // Build: 20260510_234623
@@ -210,6 +211,17 @@ const DB = {
     }
   },
 
+  // EXERCISE LIBRARY (stored as repo entries with type="exercise")
+  async getExerciseLib(coachId) {
+    return sb.select("repository", `coach_id=eq.${coachId}&label=eq.__exercise__&order=created_at.asc`);
+  },
+  async insertExercise(e) {
+    return sb.insert("repository", { ...e, label:"__exercise__" });
+  },
+  async deleteExercise(id) {
+    return sb.delete("repository", `id=eq.${id}`);
+  },
+
   // DELETE USER
   async deleteUser(userId) {
     // Delete from auth (requires service key)
@@ -416,6 +428,7 @@ const INITIAL_STORE = {
     "c2-a3": [],
   },
   // Repositorio de rutinas por entrenador (coachId → [routine templates])
+  exerciseLib: { c1:[], c2:[] },
   repository: {
     c1: [
       { id:"repo1", coachId:"c1", label:"Pierna Fuerza A", duracion:"75-90 min", exercises:[
@@ -612,6 +625,8 @@ function StoreProvider({ children }) {
         }
         // ── PROGRESS ──
         case "ADD_REPO_ROUTINE": return { ...prev, repository: { ...prev.repository, [payload.coachId]: [...(prev.repository[payload.coachId]||[]), payload] } };
+        case "ADD_EXERCISE_LIB": return { ...prev, exerciseLib: { ...prev.exerciseLib, [payload.coachId]: [...(prev.exerciseLib?.[payload.coachId]||[]), payload] } };
+        case "DELETE_EXERCISE_LIB": return { ...prev, exerciseLib: { ...prev.exerciseLib, [payload.coachId]: (prev.exerciseLib?.[payload.coachId]||[]).filter(e=>e.id!==payload.id) } };
         case "UPDATE_REPO_ROUTINE": return { ...prev, repository: { ...prev.repository, [payload.coachId]: (prev.repository[payload.coachId]||[]).map(r=>r.id===payload.id?{...r,...payload}:r) } };
         case "DELETE_REPO_ROUTINE": return { ...prev, repository: { ...prev.repository, [payload.coachId]: (prev.repository[payload.coachId]||[]).filter(r=>r.id!==payload.id) } };
         case "ADD_METRIC": {
@@ -1392,7 +1407,7 @@ function UsersModule({ currentUser }) {
   const theme = getTheme(currentUser);
   const [modal, setModal] = useState(null); // null | "add" | "edit"
   const [editing, setEditing]   = useState(null);
-  const [form, setForm]   = useState({ name:"", email:"", password:"1234", role:"alumno", gender:"male", coachId:"", alumnoLimit:null, expiresAt:null, expiresInDays:"", pesoInicial:"", pesoObj:"", altura:"", lang:"es", units:"kg" });
+  const [form, setForm]   = useState({ name:"", email:"", password:"1234", role:"alumno", gender:"male", coachId:"", alumnoLimit:null, expiresAt:null, expiresInDays:"", alumnoExpiresAt:null, alumnoExpiresInDays:"", pesoInicial:"", pesoObj:"", altura:"", lang:"es", units:"kg" });
   const [filter, setFilter] = useState("all");
 
   // SuperAdmin ve todos; coach ve solo sus alumnos
@@ -1406,7 +1421,7 @@ function UsersModule({ currentUser }) {
   const coaches = store.users.filter(u => u.role==="coach" && u.active);
 
   const openAdd = () => {
-    setForm({ name:"", email:"", password:"1234", role: currentUser.role==="coach"?"alumno":"coach", gender:"male", coachId: currentUser.role==="coach"?currentUser.id:"", alumnoLimit:null, expiresAt:null, expiresInDays:"", pesoInicial:"", pesoObj:"", altura:"", lang:"es", units:"kg" });
+    setForm({ name:"", email:"", password:"1234", role: currentUser.role==="coach"?"alumno":"coach", gender:"male", coachId: currentUser.role==="coach"?currentUser.id:"", alumnoLimit:null, expiresAt:null, expiresInDays:"", alumnoExpiresAt:null, alumnoExpiresInDays:"", pesoInicial:"", pesoObj:"", altura:"", lang:"es", units:"kg" });
     setModal("add");
   };
   const openEdit = (u) => { setEditing(u); setForm({...u}); setModal("edit"); };
@@ -1415,6 +1430,14 @@ function UsersModule({ currentUser }) {
   const [saving, setSaving] = useState(false);
   const save = async () => {
     if (!form.name || !form.email) { setSaveError("Nombre y email son obligatorios"); return; }
+    // Check alumno limit before creating
+    if (modal === "add" && form.role === "alumno") {
+      const targetCoachId = form.coachId || currentUser.id;
+      if (coachAtLimit(targetCoachId)) {
+        setSaveError("Este entrenador alcanzó el límite de alumnos. Contactá al administrador para ampliarlo.");
+        return;
+      }
+    }
     setSaveError("");
     setSaving(true);
     let expiresAt = form.expiresAt || null;
@@ -1423,8 +1446,17 @@ function UsersModule({ currentUser }) {
       d.setDate(d.getDate() + parseInt(form.expiresInDays));
       expiresAt = d.toISOString();
     }
-    const payload = { ...form, expiresAt, suspended: form.suspended||false, suspendedAt: form.suspendedAt||null };
+    // Handle alumno expiry separately
+    let alumnoExpiresAt = form.alumnoExpiresAt || null;
+    if (form.alumnoExpiresInDays && !isNaN(parseInt(form.alumnoExpiresInDays))) {
+      const d = new Date();
+      d.setDate(d.getDate() + parseInt(form.alumnoExpiresInDays));
+      alumnoExpiresAt = d.toISOString();
+    }
+    const payload = { ...form, expiresAt: form.role==="alumno" ? alumnoExpiresAt : expiresAt, suspended: form.suspended||false, suspendedAt: form.suspendedAt||null };
     delete payload.expiresInDays;
+    delete payload.alumnoExpiresInDays;
+    delete payload.alumnoExpiresAt;
 
     if (!IS_DEV) {
       try {
@@ -1487,8 +1519,8 @@ function UsersModule({ currentUser }) {
   const coachAtLimit = (coachId) => {
     const coach = store.users.find(u=>u.id===coachId);
     if (!coach || coach.alumnoLimit === null || coach.alumnoLimit === undefined) return false;
-    const count = store.users.filter(u=>u.role==="alumno"&&u.coachId===coachId&&u.active).length;
-    return count >= coach.alumnoLimit;
+    const count = store.users.filter(u=>u.role==="alumno"&&u.coachId===coachId&&u.active&&!u.suspended).length;
+    return coach.alumnoLimit > 0 && count >= coach.alumnoLimit;
   };
 
   const roleLabel = { superadmin:"SuperAdmin", coach:"Entrenador", alumno:"Alumno" };
@@ -1525,6 +1557,14 @@ function UsersModule({ currentUser }) {
                   <div style={{ fontWeight:600, fontSize:14 }}>{u.name}</div>
                   <div style={{ fontSize:12, color:"var(--sub)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.email}</div>
                   {u.coachId && <div style={{ fontSize:11, color:"var(--sub)", marginTop:1 }}>Coach: {store.users.find(c=>c.id===u.coachId)?.name}</div>}
+                  {u.role==="alumno" && u.expiresAt && (() => {
+                    const days = Math.ceil((new Date(u.expiresAt)-new Date())/(1000*60*60*24));
+                    return (
+                      <div style={{ fontSize:11, color:days<=0?"var(--red)":days<=7?"var(--orange)":"var(--sub)", marginTop:2 }}>
+                        ⏰ {days<=0?"Vencido":days<=7?`Vence en ${days} días`:`Vence el ${new Date(u.expiresAt).toLocaleDateString("es")}`}
+                      </div>
+                    );
+                  })()}
                   {u.role==="coach" && (
                     <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:3 }}>
                       <span style={{ fontSize:10, color:"var(--sub)" }}>
@@ -1685,6 +1725,30 @@ function UsersModule({ currentUser }) {
                     </div>
                   ) : null;
                 })()}
+                <Divider/>
+                <div style={{ fontSize:12, fontWeight:700, color:"var(--accent)", marginBottom:8 }}>⏰ VENCIMIENTO DEL SERVICIO</div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                  <div>
+                    <Label>FECHA DE VENCIMIENTO</Label>
+                    <input type="date" value={form.alumnoExpiresAt ? form.alumnoExpiresAt.split("T")[0] : ""}
+                      onChange={e=>setForm(p=>({...p, alumnoExpiresAt: e.target.value ? new Date(e.target.value).toISOString() : null, alumnoExpiresInDays:""}))}/>
+                  </div>
+                  <div>
+                    <Label>O EN X DÍAS</Label>
+                    <input type="number" min="1" placeholder="Ej: 30" value={form.alumnoExpiresInDays||""}
+                      onChange={e=>setForm(p=>({...p, alumnoExpiresInDays:e.target.value, alumnoExpiresAt:null}))}/>
+                  </div>
+                </div>
+                {(form.alumnoExpiresAt || form.alumnoExpiresInDays) && (
+                  <div style={{ fontSize:11, color:"var(--orange)", marginTop:4, display:"flex", justifyContent:"space-between" }}>
+                    <span>
+                      {form.alumnoExpiresInDays
+                        ? `Vence en ${form.alumnoExpiresInDays} días (${new Date(Date.now()+parseInt(form.alumnoExpiresInDays)*86400000).toLocaleDateString("es")})`
+                        : `Vence el ${new Date(form.alumnoExpiresAt).toLocaleDateString("es")}`}
+                    </span>
+                    <button onClick={()=>setForm(p=>({...p,alumnoExpiresAt:null,alumnoExpiresInDays:""}))} style={{ background:"none",border:"none",color:"var(--sub)",fontSize:12,cursor:"pointer" }}>× Sin vencimiento</button>
+                  </div>
+                )}
                 <Divider/>
                 <ObjectivesSelector
                   value={form.objectives||[]}
@@ -2142,7 +2206,12 @@ function RoutinesModule({ currentUser, targetAlumnoId }) {
 
   // ── REPOSITORY state ──────────────────────────────────────────────────────
   const coachId   = isCoach ? currentUser.id : store.users.find(u=>u.id===alumnoId)?.coachId;
-  const repoItems = store.repository?.[coachId] || [];
+  const repoItems    = store.repository?.[coachId] || [];
+  const exerciseItems = store.exerciseLib?.[coachId] || [];
+  const [repoTab, setRepoTab] = useState("routines"); // "routines" | "exercises"
+  const [exForm, setExForm] = useState({ name:"", muscle:"", description:"", videoUrl:"", sets:3, reps:8, descanso:"90 seg" });
+  const [showExForm, setShowExForm] = useState(false);
+  const [exSearch, setExSearch] = useState("");
   const [repoModal, setRepoModal] = useState(null); // null | "add" | "edit" | "import"
   const [repoForm, setRepoForm]   = useState({ label:"", duracion:"60–75 min", exercises:[] });
   const [editingRepoId, setEditingRepoId] = useState(null);
@@ -2185,7 +2254,7 @@ function RoutinesModule({ currentUser, targetAlumnoId }) {
   const DOW_LABELS = [{v:1,l:"Lun"},{v:2,l:"Mar"},{v:3,l:"Mié"},{v:4,l:"Jue"},{v:5,l:"Vie"},{v:6,l:"Sáb"},{v:0,l:"Dom"}];
   const toggleAssignDay = d => setAssignDays(p=>p.includes(d)?p.filter(x=>x!==d):[...p,d].sort());
 
-  const confirmAssign = () => {
+  const confirmAssign = async () => {
     const routine = repoItems.find(r=>r.id===assignModal);
     if (!routine || !assignAlumnoId) return;
     const sched = buildSchedule(assignStart, assignDays, 1);
@@ -2205,13 +2274,16 @@ function RoutinesModule({ currentUser, targetAlumnoId }) {
     };
     dispatch("ADD_ROUTINE", newR);
     if (!IS_DEV) {
-      DB.insertRoutine({
-        id: newR.id, alumno_id: newR.alumnoId, label: newR.label,
-        duracion: newR.duracion, semana: newR.semana, status: newR.status,
-        scheduled_date: newR.scheduledDate||null,
-        exercises: newR.exercises, logs: newR.logs,
-        from_repo: !!newR.fromRepo, repo_id: newR.fromRepo||null,
-      }).catch(e => console.error("Error saving routine:", e));
+      try {
+        const result = await DB.insertRoutine({
+          id: newR.id, alumno_id: newR.alumnoId, label: newR.label,
+          duracion: newR.duracion, semana: newR.semana, status: newR.status,
+          scheduled_date: newR.scheduledDate||null,
+          exercises: newR.exercises, logs: newR.logs,
+          from_repo: !!newR.fromRepo, repo_id: newR.fromRepo||null,
+        });
+        console.log("Routine saved:", result);
+      } catch(e) { console.error("Error saving routine:", e); }
     }
     setAssignModal(null);
   };
@@ -2263,6 +2335,19 @@ function RoutinesModule({ currentUser, targetAlumnoId }) {
       {/* ── TAB: REPOSITORIO ── */}
       {tab==="repo" && isCoach && (
         <>
+          {/* Sub-tabs: Rutinas | Ejercicios */}
+          <div style={{ display:"flex", gap:6, marginBottom:12 }}>
+            {[{id:"routines",label:"📋 Rutinas"},{id:"exercises",label:"🏋️ Ejercicios sueltos"}].map(rt=>(
+              <button key={rt.id} onClick={()=>setRepoTab(rt.id)} style={{
+                flex:1, background:repoTab===rt.id?"var(--accent)":"var(--card)",
+                border:`1px solid ${repoTab===rt.id?"var(--accent)":"var(--border)"}`,
+                color:repoTab===rt.id?"#fff":"var(--sub)", borderRadius:9, padding:"7px", fontSize:12, fontWeight:600,
+              }}>{rt.label}</button>
+            ))}
+          </div>
+
+          {/* RUTINAS sub-tab */}
+          {repoTab==="routines" && (<>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
             <div style={{ fontSize:12, color:"var(--sub)" }}>{repoItems.length} rutinas en el repositorio</div>
             <div style={{ display:"flex", gap:6 }}>
@@ -2281,7 +2366,7 @@ function RoutinesModule({ currentUser, targetAlumnoId }) {
                   <div style={{ display:"flex", gap:4 }}>
                     <Btn onClick={()=>{setAssignModal(r.id);setAssignAlumnoId(alumnoId||"");}} v="sm" style={{ fontSize:11, padding:"4px 10px" }}>→ Asignar</Btn>
                     <Btn onClick={()=>{setRepoModal("edit");setEditingRepoId(r.id);setRepoForm({...r,exercises:[...r.exercises]});}} v="ghost" style={{ padding:"4px 10px", fontSize:11 }}>✏️</Btn>
-                    <Btn onClick={()=>{ dispatch("DELETE_REPO_ROUTINE",{id:r.id,coachId}); if(!IS_DEV) DB.deleteRepo(r.id).catch(console.error); }} v="danger" style={{ padding:"4px 10px", fontSize:11 }}>🗑</Btn>
+                    <Btn onClick={async()=>{ if(!window.confirm(`¿Eliminar "${r.label}" del repositorio?`)) return; dispatch("DELETE_REPO_ROUTINE",{id:r.id,coachId}); if(!IS_DEV) DB.deleteRepo(r.id).catch(console.error); }} v="danger" style={{ padding:"4px 10px", fontSize:11 }}>🗑</Btn>
                   </div>
                 </div>
                 <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
@@ -2297,6 +2382,74 @@ function RoutinesModule({ currentUser, targetAlumnoId }) {
               </div>
             )}
           </div>
+          </>)}
+
+          {/* EJERCICIOS sub-tab */}
+          {repoTab==="exercises" && (<>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+              <div style={{ fontSize:12, color:"var(--sub)" }}>{exerciseItems.length} ejercicios en la biblioteca</div>
+              <Btn onClick={()=>setShowExForm(p=>!p)} v="sm">+ Nuevo ejercicio</Btn>
+            </div>
+            {showExForm && (
+              <Card style={{ marginBottom:12, border:"1px solid var(--accent)44" }}>
+                <H size={14} style={{ marginBottom:10 }}>Nuevo ejercicio</H>
+                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                  <div><Label>NOMBRE</Label><input placeholder="Ej: Sentadilla trasera" value={exForm.name} onChange={e=>setExForm(p=>({...p,name:e.target.value}))}/></div>
+                  <div><Label>MÚSCULO PRINCIPAL</Label><input placeholder="Ej: Cuádriceps" value={exForm.muscle} onChange={e=>setExForm(p=>({...p,muscle:e.target.value}))}/></div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6 }}>
+                    <div><Label>SERIES</Label><input type="number" value={exForm.sets} onChange={e=>setExForm(p=>({...p,sets:+e.target.value}))}/></div>
+                    <div><Label>REPS</Label><input value={exForm.reps} onChange={e=>setExForm(p=>({...p,reps:e.target.value}))}/></div>
+                    <div><Label>DESCANSO</Label><input value={exForm.descanso} onChange={e=>setExForm(p=>({...p,descanso:e.target.value}))}/></div>
+                  </div>
+                  <div><Label>VIDEO (YouTube URL)</Label><input placeholder="https://youtu.be/..." value={exForm.videoUrl} onChange={e=>setExForm(p=>({...p,videoUrl:e.target.value}))}/></div>
+                  <div><Label>DESCRIPCIÓN / INSTRUCCIONES</Label><input placeholder="Ej: Baja controlada, sube explosivo" value={exForm.description} onChange={e=>setExForm(p=>({...p,description:e.target.value}))}/></div>
+                </div>
+                <Divider/>
+                <div style={{ display:"flex", gap:8 }}>
+                  <Btn v="ghost" onClick={()=>setShowExForm(false)} full>Cancelar</Btn>
+                  <Btn onClick={async()=>{
+                    if (!exForm.name) return;
+                    const newEx = { ...exForm, id:"ex"+Date.now(), coachId };
+                    dispatch("ADD_EXERCISE_LIB", newEx);
+                    if (!IS_DEV) await DB.insertExercise({ id:newEx.id, coach_id:coachId, exercises:[newEx], label:"__exercise__" }).catch(console.error);
+                    setExForm({ name:"", muscle:"", description:"", videoUrl:"", sets:3, reps:8, descanso:"90 seg" });
+                    setShowExForm(false);
+                  }} full disabled={!exForm.name}>Guardar ejercicio ✓</Btn>
+                </div>
+              </Card>
+            )}
+            <div style={{ marginBottom:8 }}>
+              <input value={exSearch} onChange={e=>setExSearch(e.target.value)} placeholder="🔍 Buscar ejercicio..." style={{ fontSize:12 }}/>
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+              {exerciseItems.filter(e=>e.name.toLowerCase().includes(exSearch.toLowerCase())).map(ex=>(
+                <Card key={ex.id} style={{ padding:"10px 14px" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontWeight:700, fontSize:13 }}>{ex.name}</div>
+                      {ex.muscle && <div style={{ fontSize:11, color:"var(--sub)" }}>💪 {ex.muscle}</div>}
+                      <div style={{ display:"flex", gap:6, marginTop:4, flexWrap:"wrap" }}>
+                        <Tag>{ex.sets} series</Tag>
+                        <Tag>{ex.reps} reps</Tag>
+                        <Tag>{ex.descanso}</Tag>
+                      </div>
+                      {ex.videoUrl && (
+                        <a href={ex.videoUrl} target="_blank" rel="noreferrer" style={{ fontSize:11, color:"var(--accent)", display:"block", marginTop:4 }}>▶ Ver video</a>
+                      )}
+                    </div>
+                    <Btn onClick={async()=>{ dispatch("DELETE_EXERCISE_LIB",{id:ex.id,coachId}); if(!IS_DEV) DB.deleteExercise(ex.id).catch(console.error); }} v="danger" style={{ padding:"3px 8px", fontSize:11 }}>🗑</Btn>
+                  </div>
+                </Card>
+              ))}
+              {exerciseItems.length===0 && (
+                <div style={{ textAlign:"center", color:"var(--sub)", padding:24, background:"var(--card)", borderRadius:12, border:"1px dashed var(--border)" }}>
+                  <div style={{ fontSize:28, marginBottom:6 }}>🏋️</div>
+                  <div>La biblioteca está vacía</div>
+                  <div style={{ fontSize:12, marginTop:4 }}>Agregá ejercicios para usarlos al armar rutinas</div>
+                </div>
+              )}
+            </div>
+          </>)}
         </>
       )}
 
@@ -2331,7 +2484,7 @@ function RoutinesModule({ currentUser, targetAlumnoId }) {
                         {canEdit && (
                           <div style={{ display:"flex", gap:4 }}>
                             <Btn onClick={()=>{setEditModal(r.id);setEditForm({...r,exercises:[...r.exercises]});}} v="ghost" style={{ padding:"3px 10px", fontSize:11 }}>✏️</Btn>
-                            <Btn onClick={()=>{ dispatch("DELETE_ROUTINE",{id:r.id,alumnoId:aid}); if(!IS_DEV) DB.deleteRoutine(r.id).catch(console.error); }} v="danger" style={{ padding:"3px 10px", fontSize:11 }}>🗑</Btn>
+                            <Btn onClick={async()=>{ if(!window.confirm(`¿Eliminar la rutina "${r.label}"? Esta acción no se puede deshacer.`)) return; dispatch("DELETE_ROUTINE",{id:r.id,alumnoId:aid}); if(!IS_DEV) DB.deleteRoutine(r.id).catch(console.error); }} v="danger" style={{ padding:"3px 10px", fontSize:11 }}>🗑</Btn>
                           </div>
                         )}
                       </div>
@@ -2440,6 +2593,18 @@ function RoutinesModule({ currentUser, targetAlumnoId }) {
               </div>
             ))}
             {repoForm.exercises.length===0 && <div style={{ textAlign:"center",color:"var(--sub)",fontSize:13,padding:16,background:"var(--surface)",borderRadius:9 }}>Sin ejercicios todavía</div>}
+            {exerciseItems.length > 0 && (
+              <div style={{ marginTop:8 }}>
+                <div style={{ fontSize:11, color:"var(--sub)", fontWeight:600, marginBottom:6 }}>O AGREGAR DESDE LA BIBLIOTECA:</div>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
+                  {exerciseItems.map(ex=>(
+                    <button key={ex.id} onClick={()=>setRepoForm(p=>({...p, exercises:[...p.exercises, {id:"re"+Date.now(), name:ex.name, sets:ex.sets, reps:ex.reps, pct:"—", peso:"", descanso:ex.descanso, instruccion:ex.videoUrl||ex.description||""}]}))} style={{ background:"var(--surface)", border:"1px solid var(--border)", borderRadius:7, padding:"4px 10px", fontSize:12, color:"var(--text)", cursor:"pointer" }}>
+                      + {ex.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <Divider/>
             <div style={{ display:"flex", gap:8 }}>
               <Btn v="ghost" onClick={()=>setRepoModal(null)} full>Cancelar</Btn>
@@ -3550,6 +3715,19 @@ function CoachDashboard({ currentUser, onNavigate }) {
 
   return (
     <div className="fade">
+      {/* Expiry notification */}
+      {expiryDays !== null && expiryDays <= 7 && (
+        <div style={{ background:expiryDays<=0?"#ef444411":"#f9731611", border:`1px solid ${expiryDays<=0?"#ef444433":"#f9731633"}`, borderRadius:10, padding:"12px 16px", marginBottom:14, display:"flex", alignItems:"center", gap:10 }}>
+          <span style={{ fontSize:20 }}>⏰</span>
+          <div>
+            <div style={{ fontWeight:700, fontSize:13, color:expiryDays<=0?"var(--red)":"var(--orange)" }}>
+              {expiryDays<=0?"Tu suscripción venció":`Tu suscripción vence en ${expiryDays} día${expiryDays!==1?"s":""}`}
+            </div>
+            <div style={{ fontSize:12, color:"var(--sub)", marginTop:2 }}>Contactá a tu entrenador para renovarla.</div>
+          </div>
+        </div>
+      )}
+
       <div style={{ marginBottom:20 }}>
         <H size={22}>Hola, {currentUser.name.split(" ")[0]} 👋</H>
         <div style={{ color:"var(--sub)", fontSize:14, marginTop:2 }}>{now.toLocaleDateString("es",{weekday:"long",day:"numeric",month:"long"})}</div>
@@ -3652,6 +3830,7 @@ function InicioModule({ currentUser, onNavigate }) {
   const allDone     = myRoutines.length > 0 && myRoutines.every(r=>r.status==="done");
   const theme       = getTheme(currentUser);
   const meUser      = store.users.find(u=>u.id===currentUser.id);
+  const expiryDays  = meUser?.expiresAt ? Math.ceil((new Date(meUser.expiresAt)-new Date())/(1000*60*60*24)) : null;
   const myObjectives = (meUser?.objectives||[]).map(o => ({
     ...o,
     ...OBJECTIVES_CATALOG.find(c=>c.id===o.id),
@@ -3663,6 +3842,19 @@ function InicioModule({ currentUser, onNavigate }) {
 
   return (
     <div className="fade">
+      {/* Expiry notification */}
+      {expiryDays !== null && expiryDays <= 7 && (
+        <div style={{ background:expiryDays<=0?"#ef444411":"#f9731611", border:`1px solid ${expiryDays<=0?"#ef444433":"#f9731633"}`, borderRadius:10, padding:"12px 16px", marginBottom:14, display:"flex", alignItems:"center", gap:10 }}>
+          <span style={{ fontSize:20 }}>⏰</span>
+          <div>
+            <div style={{ fontWeight:700, fontSize:13, color:expiryDays<=0?"var(--red)":"var(--orange)" }}>
+              {expiryDays<=0?"Tu suscripción venció":`Tu suscripción vence en ${expiryDays} día${expiryDays!==1?"s":""}`}
+            </div>
+            <div style={{ fontSize:12, color:"var(--sub)", marginTop:2 }}>Contactá a tu entrenador para renovarla.</div>
+          </div>
+        </div>
+      )}
+
       <div style={{ marginBottom:20 }}>
         <H size={22}>Hola, {currentUser.name.split(" ")[0]} 👋</H>
         <div style={{ color:"var(--sub)", fontSize:14, marginTop:2 }}>{new Date().toLocaleDateString("es",{weekday:"long",day:"numeric",month:"long"})}</div>
