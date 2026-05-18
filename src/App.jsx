@@ -3715,19 +3715,6 @@ function CoachDashboard({ currentUser, onNavigate }) {
 
   return (
     <div className="fade">
-      {/* Expiry notification */}
-      {expiryDays !== null && expiryDays <= 7 && (
-        <div style={{ background:expiryDays<=0?"#ef444411":"#f9731611", border:`1px solid ${expiryDays<=0?"#ef444433":"#f9731633"}`, borderRadius:10, padding:"12px 16px", marginBottom:14, display:"flex", alignItems:"center", gap:10 }}>
-          <span style={{ fontSize:20 }}>⏰</span>
-          <div>
-            <div style={{ fontWeight:700, fontSize:13, color:expiryDays<=0?"var(--red)":"var(--orange)" }}>
-              {expiryDays<=0?"Tu suscripción venció":`Tu suscripción vence en ${expiryDays} día${expiryDays!==1?"s":""}`}
-            </div>
-            <div style={{ fontSize:12, color:"var(--sub)", marginTop:2 }}>Contactá a tu entrenador para renovarla.</div>
-          </div>
-        </div>
-      )}
-
       <div style={{ marginBottom:20 }}>
         <H size={22}>Hola, {currentUser.name.split(" ")[0]} 👋</H>
         <div style={{ color:"var(--sub)", fontSize:14, marginTop:2 }}>{now.toLocaleDateString("es",{weekday:"long",day:"numeric",month:"long"})}</div>
