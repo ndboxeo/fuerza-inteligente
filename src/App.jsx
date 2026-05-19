@@ -1432,22 +1432,28 @@ function UsersModule({ currentUser }) {
     if (!form.name || !form.email) { setSaveError("Nombre y email son obligatorios"); return; }
     // Check alumno limit before creating
     if (modal === "add" && form.role === "alumno") {
-      const targetCoachId = form.coachId || currentUser.id;
-      const coach = store.users.find(u=>u.id===targetCoachId);
-      const limit = coach?.alumnoLimit;
-      if (limit !== null && limit !== undefined && limit > 0) {
-        // Query Supabase for real count
-        let realCount = store.users.filter(u=>u.role==="alumno"&&u.coachId===targetCoachId&&u.active&&!u.suspended).length;
-        if (!IS_DEV) {
-          try {
-            const rows = await sb.select("profiles", `role=eq.alumno&coach_id=eq.${targetCoachId}&active=eq.true&suspended=eq.false&select=id`);
-            if (Array.isArray(rows)) realCount = rows.length;
-          } catch(e) { console.error("Error checking limit:", e); }
-        }
-        if (realCount >= limit) {
-          setSaveError(`Límite alcanzado: este entrenador tiene ${realCount}/${limit} alumnos. Aumentá el límite desde la configuración del entrenador.`);
-          setSaving(false);
-          return;
+      const targetCoachId = form.coachId || (currentUser.role==="coach" ? currentUser.id : null);
+      if (targetCoachId) {
+        const coach = store.users.find(u=>u.id===targetCoachId);
+        const limit = coach?.alumnoLimit;
+        if (limit && limit > 0) {
+          let realCount = 0;
+          if (!IS_DEV) {
+            try {
+              const rows = await sb.select("profiles", `role=eq.alumno&coach_id=eq.${targetCoachId}&active=eq.true`);
+              realCount = Array.isArray(rows) ? rows.length : 0;
+            } catch(e) {
+              // Fallback to store count
+              realCount = store.users.filter(u=>u.role==="alumno"&&u.coachId===targetCoachId&&u.active).length;
+            }
+          } else {
+            realCount = store.users.filter(u=>u.role==="alumno"&&u.coachId===targetCoachId&&u.active).length;
+          }
+          if (realCount >= limit) {
+            setSaveError(`Límite alcanzado: ${realCount}/${limit} alumnos. El administrador debe aumentar tu límite.`);
+            setSaving(false);
+            return;
+          }
         }
       }
     }
@@ -1529,12 +1535,16 @@ function UsersModule({ currentUser }) {
   };
 
   // Check alumno limit for coach
+  const getAlumnoCount = (coachId) => store.users.filter(u=>u.role==="alumno"&&u.coachId===coachId&&u.active).length;
   const coachAtLimit = (coachId) => {
     const coach = store.users.find(u=>u.id===coachId);
-    if (!coach || coach.alumnoLimit === null || coach.alumnoLimit === undefined) return false;
-    const count = store.users.filter(u=>u.role==="alumno"&&u.coachId===coachId&&u.active&&!u.suspended).length;
-    return coach.alumnoLimit > 0 && count >= coach.alumnoLimit;
+    if (!coach || !coach.alumnoLimit || coach.alumnoLimit <= 0) return false;
+    return getAlumnoCount(coachId) >= coach.alumnoLimit;
   };
+  const myCoach = store.users.find(u=>u.id===currentUser.id);
+  const myLimit = myCoach?.alumnoLimit || null;
+  const myCount = getAlumnoCount(currentUser.id);
+  const atLimit = coachAtLimit(currentUser.id);
 
   const roleLabel = { superadmin:"SuperAdmin", coach:"Entrenador", alumno:"Alumno" };
   const roleColor = { superadmin:"var(--yellow)", coach:"var(--red)", alumno:"var(--accent)" };
@@ -1543,10 +1553,21 @@ function UsersModule({ currentUser }) {
     <div className="fade">
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
         <H size={20}>Usuarios</H>
-        {currentUser.role==="coach" && coachAtLimit(currentUser.id)
-          ? <div style={{ fontSize:12, color:"var(--red)", fontWeight:600, padding:"6px 12px", background:"#ef444411", borderRadius:8, border:"1px solid #ef444433" }}>⚠️ Límite alcanzado</div>
-          : <Btn onClick={openAdd} v="sm">+ Nuevo</Btn>
-        }
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          {currentUser.role==="coach" && myLimit && (
+            <div style={{ fontSize:12, fontWeight:700, padding:"5px 12px", borderRadius:8,
+              background: atLimit?"#ef444411":myCount>=myLimit*0.8?"#f9731611":"var(--surface)",
+              color: atLimit?"var(--red)":myCount>=myLimit*0.8?"var(--orange)":"var(--sub)",
+              border: `1px solid ${atLimit?"#ef444433":myCount>=myLimit*0.8?"#f9731633":"var(--border)"}`,
+            }}>
+              👥 {myCount}/{myLimit}
+            </div>
+          )}
+          <Btn onClick={atLimit ? ()=>{} : openAdd} v="sm"
+            style={{ opacity: atLimit ? 0.4 : 1, cursor: atLimit ? "not-allowed" : "pointer" }}
+            title={atLimit ? `Límite alcanzado: ${myCount}/${myLimit} alumnos` : "Crear nuevo alumno"}
+          >+ Nuevo</Btn>
+        </div>
       </div>
 
       {currentUser.role === "superadmin" && (
