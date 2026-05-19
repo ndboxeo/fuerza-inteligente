@@ -1229,8 +1229,8 @@ function AuthModule({ onLogin }) {
         pesoInicial:  profile.peso_inicial,
         pesoObj:      profile.peso_obj,
         altura:       profile.altura,
-        alumnoLimit:  profile.alumno_limit,
-        expiresAt:    profile.expires_at,
+        alumnoLimit:  profile.alumno_limit || null,
+        expiresAt:    profile.expires_at || null,
         suspended:    profile.suspended,
         suspendedAt:  profile.suspended_at,
         active:       profile.active,
@@ -4300,6 +4300,17 @@ function AppShell({ currentUser: initUser, onLogout }) {
         // Load all profiles visible to this user
         const profiles = await DB.getAllProfiles();
         profiles.forEach(p => {
+          // Update current user's own profile too (to get alumnoLimit etc.)
+          if (p.id === currentUser.id) {
+            setCurrentUser({
+              ...currentUser,
+              alumnoLimit: p.alumno_limit || null,
+              expiresAt: p.expires_at || null,
+              suspended: p.suspended,
+              photo: p.photo_url || currentUser.photo,
+            });
+            return;
+          }
           if (p.id !== currentUser.id) {
             dispatch("ADD_USER", {
               id:p.id, role:p.role, name:p.name, email:"",
