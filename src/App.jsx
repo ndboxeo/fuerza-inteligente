@@ -1534,17 +1534,30 @@ function UsersModule({ currentUser }) {
     setModal(null);
   };
 
-  // Check alumno limit for coach
-  const getAlumnoCount = (coachId) => store.users.filter(u=>u.role==="alumno"&&u.coachId===coachId&&u.active).length;
-  const coachAtLimit = (coachId) => {
-    const coach = store.users.find(u=>u.id===coachId);
-    if (!coach || !coach.alumnoLimit || coach.alumnoLimit <= 0) return false;
-    return getAlumnoCount(coachId) >= coach.alumnoLimit;
-  };
-  const myCoach = store.users.find(u=>u.id===currentUser.id);
-  const myLimit = myCoach?.alumnoLimit || null;
-  const myCount = getAlumnoCount(currentUser.id);
-  const atLimit = coachAtLimit(currentUser.id);
+  // Real-time limit check from Supabase
+  const [myLimit, setMyLimit] = useState(currentUser.alumnoLimit || null);
+  const [myCount, setMyCount] = useState(0);
+  const atLimit = myLimit && myLimit > 0 && myCount >= myLimit;
+
+  useEffect(() => {
+    const loadLimitData = async () => {
+      if (currentUser.role !== "coach") return;
+      try {
+        if (!IS_DEV) {
+          // Get coach's limit from Supabase
+          const coachData = await sb.select("profiles", `id=eq.${currentUser.id}&select=alumno_limit`);
+          if (coachData?.length) setMyLimit(coachData[0].alumno_limit || null);
+          // Get real alumno count
+          const alumnoData = await sb.select("profiles", `role=eq.alumno&coach_id=eq.${currentUser.id}&active=eq.true`);
+          if (Array.isArray(alumnoData)) setMyCount(alumnoData.length);
+        } else {
+          setMyLimit(currentUser.alumnoLimit || null);
+          setMyCount(store.users.filter(u=>u.role==="alumno"&&u.coachId===currentUser.id&&u.active).length);
+        }
+      } catch(e) { console.error("Error loading limit:", e); }
+    };
+    loadLimitData();
+  }, [store.users.length]); // re-run when users change
 
   const roleLabel = { superadmin:"SuperAdmin", coach:"Entrenador", alumno:"Alumno" };
   const roleColor = { superadmin:"var(--yellow)", coach:"var(--red)", alumno:"var(--accent)" };
