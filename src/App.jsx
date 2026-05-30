@@ -2287,11 +2287,21 @@ function RoutinesModule({ currentUser, targetAlumnoId }) {
     if (!repoForm.label) return;
     if (repoModal==="edit") {
       dispatch("UPDATE_REPO_ROUTINE", {...repoForm, id:editingRepoId, coachId});
-      if (!IS_DEV) await DB.updateRepo(editingRepoId, { label:repoForm.label, duracion:repoForm.duracion, exercises:repoForm.exercises }).catch(console.error);
+      if (!IS_DEV) await DB.updateRepo(editingRepoId, { label:repoForm.label, exercises:repoForm.exercises||[] }).catch(console.error);
     } else {
       const newId = "repo"+Date.now();
       dispatch("ADD_REPO_ROUTINE", {...repoForm, id:newId, coachId});
-      if (!IS_DEV) await DB.insertRepo({ id:newId, coach_id:coachId, label:repoForm.label, duracion:repoForm.duracion, exercises:repoForm.exercises }).catch(console.error);
+      if (!IS_DEV) {
+        try {
+          const repoResult = await DB.insertRepo({ 
+            id: newId, 
+            coach_id: coachId, 
+            label: repoForm.label, 
+            exercises: repoForm.exercises || [],
+          });
+          console.log("Repo saved:", repoResult);
+        } catch(e) { console.error("Error saving repo:", e); }
+      }
     }
     setRepoModal(null);
     setRepoForm({label:"",duracion:"60–75 min",exercises:[]});
@@ -2323,11 +2333,15 @@ function RoutinesModule({ currentUser, targetAlumnoId }) {
     if (!IS_DEV) {
       try {
         const result = await DB.insertRoutine({
-          id: newR.id, alumno_id: newR.alumnoId, label: newR.label,
-          duracion: newR.duracion, semana: newR.semana, status: newR.status,
-          scheduled_date: newR.scheduledDate||null,
-          exercises: newR.exercises, logs: newR.logs,
-          from_repo: !!newR.fromRepo, repo_id: newR.fromRepo||null,
+          id:            newR.id,
+          alumno_id:     newR.alumnoId,
+          label:         newR.label,
+          semana:        newR.semana || 1,
+          status:        newR.status || "upcoming",
+          scheduled_date: newR.scheduledDate || null,
+          exercises:     newR.exercises || [],
+          logs:          newR.logs || {},
+          from_repo:     !!newR.fromRepo,
         });
         console.log("Routine saved:", result);
       } catch(e) { console.error("Error saving routine:", e); }
@@ -2458,7 +2472,16 @@ function RoutinesModule({ currentUser, targetAlumnoId }) {
                     if (!exForm.name) return;
                     const newEx = { ...exForm, id:"ex"+Date.now(), coachId };
                     dispatch("ADD_EXERCISE_LIB", newEx);
-                    if (!IS_DEV) await DB.insertExercise({ id:newEx.id, coach_id:coachId, exercises:[newEx], label:"__exercise__" }).catch(console.error);
+                    if (!IS_DEV) {
+                      try {
+                        await DB.insertExercise({ 
+                          id: newEx.id, 
+                          coach_id: coachId, 
+                          exercises: [newEx],
+                          label: "__exercise__",
+                        });
+                      } catch(e) { console.error("Error saving exercise:", e); }
+                    }
                     setExForm({ name:"", muscle:"", description:"", videoUrl:"", sets:3, reps:8, descanso:"90 seg" });
                     setShowExForm(false);
                   }} full disabled={!exForm.name}>Guardar ejercicio ✓</Btn>
@@ -2746,7 +2769,7 @@ function TrainingModule({ currentUser }) {
     if (!IS_DEV) {
       try {
         // Save log to routine
-        await DB.updateRoutine(activeId, { logs, status:"done" });
+        await DB.updateRoutine(activeId, { logs: logs, status: "done" });
         // Save progress entries
         for (const ex of (active?.exercises||[])) {
           const exLogs = logs[ex.id]||[];
