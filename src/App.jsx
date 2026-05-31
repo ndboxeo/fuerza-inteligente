@@ -361,6 +361,15 @@ const OBJ_CAT_COLORS = {
 };
 
 const IS_SUPABASE = !!import.meta.env?.VITE_SUPABASE_URL;
+
+// Generate proper UUID v4
+const genUUID = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random()*16|0;
+    return (c==='x' ? r : (r&0x3|0x8)).toString(16);
+  });
+};
 const INITIAL_STORE = {
   // Usuarios: superadmin → coach → alumno
   users: [
@@ -1527,7 +1536,7 @@ function UsersModule({ currentUser }) {
         }
       } catch(e) { console.error("Error saving user:", e); }
     } else {
-      if (modal === "add") dispatch("ADD_USER", { ...payload, id:"u"+Date.now(), active:true, expiresAt });
+      if (modal === "add") dispatch("ADD_USER", { ...payload, id:genUUID(), active:true, expiresAt });
       else dispatch("UPDATE_USER", { ...payload, id:editing.id });
     }
     setSaving(false);
@@ -2289,7 +2298,7 @@ function RoutinesModule({ currentUser, targetAlumnoId }) {
       dispatch("UPDATE_REPO_ROUTINE", {...repoForm, id:editingRepoId, coachId});
       if (!IS_DEV) await DB.updateRepo(editingRepoId, { label:repoForm.label, exercises:repoForm.exercises||[] }).catch(console.error);
     } else {
-      const newId = "repo"+Date.now();
+      const newId = genUUID();
       dispatch("ADD_REPO_ROUTINE", {...repoForm, id:newId, coachId});
       if (!IS_DEV) {
         try {
@@ -2318,7 +2327,7 @@ function RoutinesModule({ currentUser, targetAlumnoId }) {
     const scheduledDate = sched[0] || null;
     const exercises = routine.exercises.map(e=>({...e, id:"a"+Date.now()+Math.random().toString(36).slice(2)}));
     const newR = {
-      id: "r"+Date.now(),
+      id: genUUID(),
       alumnoId: assignAlumnoId,
       semana: 1,
       label: routine.label,
@@ -2470,7 +2479,7 @@ function RoutinesModule({ currentUser, targetAlumnoId }) {
                   <Btn v="ghost" onClick={()=>setShowExForm(false)} full>Cancelar</Btn>
                   <Btn onClick={async()=>{
                     if (!exForm.name) return;
-                    const newEx = { ...exForm, id:"ex"+Date.now(), coachId };
+                    const newEx = { ...exForm, id:genUUID(), coachId };
                     dispatch("ADD_EXERCISE_LIB", newEx);
                     if (!IS_DEV) {
                       try {
@@ -2687,7 +2696,7 @@ function RoutinesModule({ currentUser, targetAlumnoId }) {
       {/* ── IMPORT TO REPO MODAL ── */}
       {repoModal==="import" && (
         <Modal title="Importar al Repositorio" onClose={()=>setRepoModal(null)}>
-          <ImportModule alumnoId={null} coachId={coachId} onImport={(r)=>{dispatch("ADD_REPO_ROUTINE",{...r,id:"repo"+Date.now(),coachId,label:r.label});}} onClose={()=>setRepoModal(null)} toRepo={true}/>
+          <ImportModule alumnoId={null} coachId={coachId} onImport={(r)=>{dispatch("ADD_REPO_ROUTINE",{...r,id:genUUID(),coachId,label:r.label});}} onClose={()=>setRepoModal(null)} toRepo={true}/>
         </Modal>
       )}
 
@@ -3251,7 +3260,7 @@ function MessagesModule({ currentUser }) {
 
   const sendMsg = async (msgData) => {
     if (!selectedId) return;
-    const msg = { id:"msg"+Date.now(), from:currentUser.id, to:selectedId, ts:new Date().toLocaleTimeString("es",{hour:"2-digit",minute:"2-digit"}), date:new Date().toISOString(), read:false, ...msgData };
+    const msg = { id:genUUID(), from:currentUser.id, to:selectedId, ts:new Date().toLocaleTimeString("es",{hour:"2-digit",minute:"2-digit"}), date:new Date().toISOString(), read:false, ...msgData };
     dispatch("ADD_MESSAGE", { key, msg });
     if (!IS_DEV) {
       try {
