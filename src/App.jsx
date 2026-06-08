@@ -133,7 +133,7 @@ const DB = {
 
   // REPOSITORY
   async getRepository(coachId) {
-    return sb.select("repository", `coach_id=eq.${coachId}&order=created_at.asc`);
+    return sb.select("repository", `coach_id=eq.${coachId}&label=neq.__exercise__&order=created_at.asc`);
   },
   async insertRepo(r) {
     return sb.insert("repository", r);
@@ -249,6 +249,9 @@ const DB = {
   },
   async updateNote(id, data) {
     return sb.update("notes", data, `id=eq.${id}`);
+  },
+  async upsertNotePosition(id, x, y) {
+    return sb.update("notes", { pos_x:Math.round(x), pos_y:Math.round(y) }, `id=eq.${id}`);
   },
   async deleteNote(id) {
     return sb.delete("notes", `id=eq.${id}`);
@@ -3538,10 +3541,7 @@ function OverviewModule({ currentUser, onNavigate }) {
 function SADashboard({ currentUser }) {
   const { store } = useStore();
   const t = useLang(currentUser || { lang:'Español' });
-  const [notes, setNotes] = useState([
-    { id:1, text:"Revisar vencimiento de Sofía el 30/06", color:"#f59e0b" },
-    { id:2, text:"Pendiente: onboarding de nuevo entrenador", color:"#3b82f6" },
-  ]);
+  const [notes, setNotes] = useState([]);
   const [newNote, setNewNote] = useState("");
   const [noteColor, setNoteColor] = useState("#f59e0b");
   const [dragId, setDragId] = useState(null);
@@ -3566,7 +3566,10 @@ function SADashboard({ currentUser }) {
     setNotes(p => [...p, { id:Date.now(), text:newNote.trim(), color:noteColor }]);
     setNewNote("");
   };
-  const removeNote = (id) => setNotes(p => p.filter(n=>n.id!==id));
+  const removeNote = async (id) => {
+    setNotes(p => p.filter(n=>n.id!==id));
+    if (!IS_DEV) DB.deleteNote(id).catch(console.error);
+  };
   const onDragStart = (id) => setDragId(id);
   const onDragEnd   = () => { setDragId(null); setDragOver(null); };
   const onDrop      = (targetId) => {
@@ -3690,12 +3693,19 @@ function PizarraBoard({ currentUser }) {
 
   const NOTE_COLORS = ["#f59e0b","#3b82f6","#22c55e","#e63946","#7c3aed","#f97316","#ec4899","#06b6d4"];
 
-  const addNote = () => {
+  const addNote = async () => {
     if (!newNote.trim()) return;
     const x = 20 + (notes.length%4)*160;
     const y = 20 + Math.floor(notes.length/4)*140;
-    setNotes(p=>[...p,{id:Date.now(),text:newNote.trim(),color:noteColor,x,y}]);
+    const newId = genUUID();
+    const note = { id:newId, text:newNote.trim(), color:noteColor, x, y };
+    setNotes(p=>[...p, note]);
     setNewNote("");
+    if (!IS_DEV && currentUser?.id) {
+      try {
+        await DB.insertNote({ id:newId, user_id:currentUser.id, text:note.text, color:note.color, pos_x:x, pos_y:y });
+      } catch(e) { console.error("Error saving note:", e); }
+    }
   };
 
   const startDrag = (e, id) => {
@@ -3755,14 +3765,18 @@ function PizarraBoard({ currentUser }) {
             }}
           >
             <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:4 }}>
-              <button onMouseDown={e=>e.stopPropagation()} onClick={()=>setNotes(p=>p.filter(x=>x.id!==n.id))} style={{ background:"rgba(0,0,0,.2)", border:"none", borderRadius:4, color:"#fff", fontSize:12, width:18, height:18, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
+              <button onMouseDown={e=>e.stopPropagation()} onClick={()=>removeNote(n.id)} style={{ background:"rgba(0,0,0,.2)", border:"none", borderRadius:4, color:"#fff", fontSize:12, width:18, height:18, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
             </div>
             {editingId===n.id ? (
               <textarea
                 autoFocus
                 value={editText}
                 onChange={e=>setEditText(e.target.value)}
-                onBlur={()=>{setNotes(p=>p.map(x=>x.id===n.id?{...x,text:editText}:x));setEditingId(null);}}
+                onBlur={()=>{
+                  setNotes(p=>p.map(x=>x.id===n.id?{...x,text:editText}:x));
+                  if (!IS_DEV) DB.updateNote(n.id, {text:editText}).catch(console.error);
+                  setEditingId(null);
+                }}
                 onMouseDown={e=>e.stopPropagation()}
                 style={{ width:"100%", background:"transparent", border:"none", fontSize:12, color:"#000", resize:"none", outline:"none", fontFamily:"'DM Sans',sans-serif" }}
               />
@@ -4381,11 +4395,17 @@ function AppShell({ currentUser: initUser, onLogout }) {
             exercises:r.exercises||[], logs:r.logs||{}, fromRepo:r.from_repo,
           }));
         } else if (currentUser.role === "coach") {
-          // Load repo
+          // Load repo (excludes __exercise__ entries)
           const repo = await DB.getRepository(currentUser.id);
           repo.forEach(r => dispatch("ADD_REPO_ROUTINE", {
             id:r.id, coachId:r.coach_id, label:r.label, duracion:r.duracion, exercises:r.exercises||[],
           }));
+          // Load exercise library separately
+          const exLib = await DB.getExerciseLib(currentUser.id);
+          exLib.forEach(e => {
+            const exercises = e.exercises || [];
+            exercises.forEach(ex => dispatch("ADD_EXERCISE_LIB", { ...ex, coachId:currentUser.id }));
+          });
           // Load routines for all alumnos of this coach
           const myAlumnos = profiles.filter(p => p.coach_id === currentUser.id);
           for (const a of myAlumnos) {
@@ -4406,6 +4426,12 @@ function AppShell({ currentUser: initUser, onLogout }) {
             }));
           }
         }
+
+        // Load notes for current user
+        try {
+          const userNotes = await DB.getNotes(currentUser.id);
+          // Notes are loaded directly in PizarraBoard component via useEffect
+        } catch(e) { console.error("Error loading notes:", e); }
 
         // Load messages
         const allUsers = profiles.map(p=>p.id);
